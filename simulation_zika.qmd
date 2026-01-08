@@ -1,10 +1,26 @@
 ---
 title: "Epidemie_Zika"
-format: html
-editor: visual
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-floating: true
+    number-sections: true
+    code-fold: true
+    embed-resources: true
+    toc-depth: 4
+    theme: cosmo
+    highlight-style: pygments
+    fig.align: center
 ---
-```{r}
+
+# Packages
+
+```{r, message = FALSE, warning = FALSE}
 library(outbreaks)
+library(dplyr)
+library(ggplot2)
+library(deSolve)
 ```
 
 ```{r}
@@ -12,8 +28,179 @@ data <- zika_sanandres_2015
 ```
 
 ```{r}
-plot(data)
+plot(data, pch = 19)
 data$cumule <- cumsum(data$cases)
 plot(x= data$date, y=data$cumule)
+
+ggplot(data, aes(x = date, y = cases))+
+  geom_line() + 
+  geom_point(alpha = 0.7) +
+  theme_bw()
+```
+
+# SIR discret
+```{r}
+seirs_ode <- function(t, state, pars) {
+  with(as.list(c(state, pars)), {
+    
+    N_H <- S_H + E_H + I_H + R_H
+    N_M <- S_M + E_M + I_M
+    
+    lambda_H <- a * b_MH * I_M / N_H  # force of infection
+    lambda_M <- a * b_HM * I_H / N_H
+    
+    # Humains 
+    dS_H <-  - lambda_H * S_H 
+    dE_H <-  lambda_H * S_H - sigma_H * E_H
+    dI_H <-  sigma_H * E_H - gamma_H * I_H
+    dR_H <-  gamma_H * I_H
+    
+    # Moustiques
+    dS_M <-  mu_M * N_M - lambda_M * S_M - mu_M * S_M
+    dE_M <-  lambda_M * S_M - sigma_M * E_M - mu_M * E_M
+    dI_M <-  sigma_M * E_M - mu_M * I_M
+
+    list(c(dS_H, dE_H, dI_H, dR_H,
+      dS_M, dE_M, dI_M))
+  })
+}
+
+```
+
+Param 
+```{r}
+parameters <- c(
+
+  # Populations
+  N_H = 70000,
+  N_M = 30000, # ?
+
+  # Transmission
+  a     = 0.5,      # piqûres / moustique / jour
+  b_MH  = 0.3,      # moustique -> humain
+  b_HM  = 0.3,      # humain -> moustique
+
+  # Humains
+  sigma_H = 1/5,    # durée incubation humaine : 5j
+  gamma_H = 1/7,    # durée infection : 7j
+
+  # Moustiques
+  sigma_M = 1/10,   # durée incubation : 10j ?
+  mu_M    = 1/10    # durée vie : 10j ?
+)
+
+```
+
+```{r}
+init <- c(
+  S_H = as.numeric(parameters["N_H"] - 1),
+  E_H = 0,
+  I_H = 1,
+  R_H = 0,
+
+  S_M = as.numeric(parameters["N_M"]),
+  E_M = 0,
+  I_M = 0
+)
+
+```
+
+```{r}
+times <- seq(0, 101, by = 1) 
+```
+
+```{r}
+out <- ode(
+  y = init,
+  times = times,
+  func = seirs_ode,
+  parms = parameters,
+  method = "rk4"
+)
+
+out <- as.data.frame(out)
+```
+
+```{r}
+out$incidence <- parameters["sigma_H"] * out$E_H
+```
+
+```{r}
+plot(out$time, out$incidence,
+     type = "l", lwd = 2,
+     xlab = "Temps (jours)",
+     ylab = "Incidence journalière")
+
+```
+
+a, B_MH, b_HM, NM pas identifiables (juste leur combi)
+
+# Asympto E divisé en I et A
+```{r}
+SEIAR_SEI <- function(t, state, parameters) {
+
+  with(as.list(c(state, parameters)), {
+
+    # Forces d'infection
+    lambda_H <- a * b_MH * I_M / N_H
+    lambda_M <- a * b_HM * (I_H + theta * A_H) / N_H
+
+    # Humains
+    dS_H <- -lambda_H * S_H
+    dE_H <-  lambda_H * S_H - sigma_H * E_H
+    dI_H <-  p * sigma_H * E_H - gamma_I * I_H
+    dA_H <- (1 - p) * sigma_H * E_H - gamma_A * A_H
+    dR_H <-  gamma_I * I_H + gamma_A * A_H
+
+    # Moustiques
+    dS_M <-  mu_M * N_M - lambda_M * S_M - mu_M * S_M
+    dE_M <-  lambda_M * S_M - sigma_M * E_M - mu_M * E_M
+    dI_M <-  sigma_M * E_M - mu_M * I_M
+
+    list(c(
+      dS_H, dE_H, dI_H, dA_H, dR_H,
+      dS_M, dE_M, dI_M
+    ))
+  })
+}
+
+```
+
+```{r}
+parameters <- c(
+
+  N_H = 70000,
+  N_M = 30000,
+
+  a     = 0.5,
+  b_MH  = 0.3,
+  b_HM  = 0.3,
+
+  sigma_H = 1/5,
+  gamma_I = 1/7,
+  gamma_A = 1/7,
+
+  p     = 0.2,    # proportion symptomatique
+  theta = 0.7,    # infectiosité asympto
+
+  sigma_M = 1/10,
+  mu_M    = 1/14
+)
+
+```
+
+```{r}
+init <- c(
+  S_H = as.numeric(parameters["N_H"]) - 1,
+  E_H = 0,
+  I_H = 1,
+  A_H = 0,
+  R_H = 0,
+
+  S_M = as.numeric(parameters["N_M"]),
+  E_M = 0,
+  I_M = 0
+)
+
 ```
 
