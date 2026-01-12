@@ -23,6 +23,7 @@ library(ggplot2)
 library(deSolve)
 ```
 
+# Data
 ```{r}
 data <- zika_sanandres_2015
 ```
@@ -36,6 +37,32 @@ ggplot(data, aes(x = date, y = cases))+
   geom_line() + 
   geom_point(alpha = 0.7) +
   theme_bw()
+```
+## Rajouter les pas de temps manquants (avec des NA)
+Pour avoir la bonne taille de data.frame (par rapport à la simulation)
+```{r}
+tt_data <- seq(from = min(data$date), to = max(data$date), by = "day")
+tt_data <- data.frame(date = tt_data) %>%
+  left_join(., data, by = "date")
+```
+
+## Données en cumulées par semaine depuis le début de suivi
+```{r}
+data_sem <- tt_data %>%
+  mutate(week = floor(as.numeric(date - min(date))/7)) %>%
+  group_by(week) %>%
+  summarize(cases = sum(cases, na.rm = TRUE))
+```
+
+## Données météo 
+```{r}
+# plot(as.Date(era5$valid_time), era5$tp)
+# plot(as.Date(era5$valid_time), era5$sst)
+```
+
+```{r}
+# data %>%
+#   left_join(., era5, by = c("date" = "valid_time"))
 ```
 
 # SIR discret
@@ -72,7 +99,7 @@ Param
 parameters <- c(
 
   # Populations
-  N_H = 70000,
+  N_H = 55000,
   N_M = 30000, # ?
 
   # Transmission
@@ -82,15 +109,15 @@ parameters <- c(
 
   # Humains
   sigma_H = 1/5,    # durée incubation humaine : 5j
-  gamma_H = 1/7,    # durée infection : 7j
+  gamma_H = 1/5,    # durée infection : 4.7j
 
   # Moustiques
   sigma_M = 1/10,   # durée incubation : 10j ?
-  mu_M    = 1/10    # durée vie : 10j ?
+  mu_M    = 1/15    # durée vie : 10j ?
 )
-
 ```
 
+Insecticide avion : transmission arrivée H
 ```{r}
 init <- c(
   S_H = as.numeric(parameters["N_H"] - 1),
@@ -102,11 +129,10 @@ init <- c(
   E_M = 0,
   I_M = 0
 )
-
 ```
 
 ```{r}
-times <- seq(0, 101, by = 1) 
+times <- seq(0, 146, by = 1) # mettre + long 
 ```
 
 ```{r}
@@ -130,7 +156,6 @@ plot(out$time, out$incidence,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
-
 ```
 
 a, B_MH, b_HM, NM pas identifiables (juste leur combi)
@@ -168,14 +193,17 @@ SEIAR_SEI <- function(t, state, parameters) {
 
 ```{r}
 parameters <- c(
-
-  N_H = 70000,
+  
+  # Taille pop
+  N_H = 55000,
   N_M = 30000,
 
+  # Transmission 
   a     = 0.5,
   b_MH  = 0.3,
   b_HM  = 0.3,
 
+  # Humains
   sigma_H = 1/5,
   gamma_I = 1/7,
   gamma_A = 1/7,
@@ -183,8 +211,9 @@ parameters <- c(
   p     = 0.2,    # proportion symptomatique
   theta = 0.7,    # infectiosité asympto
 
+  # Moustiques 
   sigma_M = 1/10,
-  mu_M    = 1/14
+  mu_M    = 1/15
 )
 
 ```
@@ -201,6 +230,129 @@ init <- c(
   E_M = 0,
   I_M = 0
 )
+```
 
+```{r}
+times <- seq(0, 146, by = 1) # mettre + long 
+```
+
+```{r}
+out <- ode(
+  y = init,
+  times = times,
+  func = SEIAR_SEI,
+  parms = parameters,
+  method = "rk4"
+)
+
+out <- as.data.frame(out)
+```
+
+```{r}
+out$incidence <- parameters["sigma_H"] * out$E_H
+```
+
+```{r}
+plot(out$time, out$incidence * 55000*0.2,
+     type = "l", lwd = 2,
+     xlab = "Temps (jours)",
+     ylab = "Incidence journalière")
+lines(date$cases)
+```
+
+# Sans les moustiques avec Asympto E divisé en I et A
+```{r}
+SEIAR <- function(t, state, parameters) {
+
+  with(as.list(c(state, parameters)), {
+
+    # Forces d'infection integrant moustiques
+    lambda_H <- beta * (I_H + theta * A_H) / N_H
+
+    # Humains
+    dS_H <- -lambda_H * S_H
+    dE_H <-  lambda_H * S_H - sigma_H * E_H
+    dI_H <-  p * sigma_H * E_H - gamma_I * I_H
+    dA_H <- (1 - p) * sigma_H * E_H - gamma_A * A_H
+    dR_H <-  gamma_I * I_H + gamma_A * A_H
+
+    list(c(
+      dS_H, dE_H, dI_H, dA_H, dR_H
+    ))
+  })
+}
+
+```
+
+```{r}
+parameters <- c(
+  
+  # Taille pop
+  N_H = 55000,
+
+  # Transmission 
+  beta = 0.5, #A MODIFIER !!!!
+
+  # Humains
+  sigma_H = 1/5,
+  gamma_I = 1/7,
+  gamma_A = 1/7,
+
+  p     = 0.2,   # proportion symptomatique
+  theta = 0.7    # infectiosité asympto
+)
+
+init <- c(
+  S_H = as.numeric(parameters["N_H"]) - 1,
+  E_H = 0,
+  I_H = 1,
+  A_H = 0,
+  R_H = 0
+)
+
+times <- seq(0, 146, by = 1) # mettre + long 
+```
+
+```{r}
+out <- ode(
+  y = init,
+  times = times,
+  func = SEIAR,
+  parms = parameters,
+  method = "rk4"
+)
+
+out <- as.data.frame(out)
+```
+
+Incidence : 
+```{r}
+# Incidence : nbr nvlles infections par intervalle de tps 
+# sigma x E (nbr indiv qui passent de E à I par jour)
+# Incidence en nbr indiv/jours
+out$incidence <- parameters["sigma_H"] * out$E_H
+out
+
+# Cas observés : nbr de cas détectés par jour 
+taux_detec <- 0.2
+out$incidence_obs <- taux_detec * parameters["p"] * out$incidence
+```
+
+```{r}
+plot(out$time, out$incidence_obs,
+     type = "l", lwd = 2,
+     xlab = "Temps (jours)",
+     ylab = "Incidence journalière")
+lines(tt_data$date, tt_data$cases)
+```
+
+```{r}
+indic_week <- tapply(out$incidence_obs, floor(out$time/7), sum)
+
+plot(data_sem$week, indic_week,
+     type = "l", lwd = 2,
+     xlab = "Temps (semaine depuis le début de l'étude)",
+     ylab = "Incidence hebdomadaire")
+lines(data_sem$week, data_sem$cases)
 ```
 
