@@ -38,6 +38,7 @@ ggplot(data, aes(x = date, y = cases))+
   geom_point(alpha = 0.7) +
   theme_bw()
 ```
+
 ## Rajouter les pas de temps manquants (avec des NA)
 Pour avoir la bonne taille de data.frame (par rapport à la simulation)
 ```{r}
@@ -65,7 +66,7 @@ data_sem <- tt_data %>%
 #   left_join(., era5, by = c("date" = "valid_time"))
 ```
 
-# SIR discret
+# SEIR + SEI discret
 ```{r}
 seirs_ode <- function(t, state, pars) {
   with(as.list(c(state, pars)), {
@@ -91,10 +92,9 @@ seirs_ode <- function(t, state, pars) {
       dS_M, dE_M, dI_M))
   })
 }
-
 ```
 
-Param 
+Paramètres : 
 ```{r}
 parameters <- c(
 
@@ -117,7 +117,7 @@ parameters <- c(
 )
 ```
 
-Insecticide avion : transmission arrivée H
+Insecticide dans les avions : transmission du zika à San Andrès vient de H
 ```{r}
 init <- c(
   S_H = as.numeric(parameters["N_H"] - 1),
@@ -129,13 +129,9 @@ init <- c(
   E_M = 0,
   I_M = 0
 )
-```
 
-```{r}
 times <- seq(0, 146, by = 1) # mettre + long 
-```
 
-```{r}
 out <- ode(
   y = init,
   times = times,
@@ -147,11 +143,10 @@ out <- ode(
 out <- as.data.frame(out)
 ```
 
+Incidence : nombre de nouvelles infectionns par jour 
 ```{r}
 out$incidence <- parameters["sigma_H"] * out$E_H
-```
 
-```{r}
 plot(out$time, out$incidence,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
@@ -196,24 +191,24 @@ parameters <- c(
   
   # Taille pop
   N_H = 55000,
-  N_M = 30000,
-
-  # Transmission 
-  a     = 0.5,
-  b_MH  = 0.3,
-  b_HM  = 0.3,
-
-  # Humains
-  sigma_H = 1/5,
-  gamma_I = 1/7,
-  gamma_A = 1/7,
+  N_M = 30000, #?
 
   p     = 0.2,    # proportion symptomatique
   theta = 0.7,    # infectiosité asympto
+  
+  # Transmission
+  a     = 0.5,      # piqûres / moustique / jour
+  b_MH  = 0.3,      # moustique -> humain
+  b_HM  = 0.3,      # humain -> moustique
 
-  # Moustiques 
-  sigma_M = 1/10,
-  mu_M    = 1/15
+  # Humains
+  sigma_H = 1/5,    # durée incubation humaine : 5j
+  gamma_I = 1/7,
+  gamma_A = 1/7,    # durée infection : 4.7j
+
+  # Moustiques
+  sigma_M = 1/10,   # durée incubation : 10j ?
+  mu_M    = 1/15    # durée vie : 10j ?
 )
 
 ```
@@ -230,9 +225,7 @@ init <- c(
   E_M = 0,
   I_M = 0
 )
-```
 
-```{r}
 times <- seq(0, 146, by = 1) # mettre + long 
 ```
 
@@ -331,11 +324,12 @@ Incidence :
 # sigma x E (nbr indiv qui passent de E à I par jour)
 # Incidence en nbr indiv/jours
 out$incidence <- parameters["sigma_H"] * out$E_H
-out
 
 # Cas observés : nbr de cas détectés par jour 
-taux_detec <- 0.2
+taux_detec <- 0.2 #le faire varier : début infection (X%) vs fin infcetion (100%)
 out$incidence_obs <- taux_detec * parameters["p"] * out$incidence
+
+out <- cbind(out, tt_data)
 ```
 
 ```{r}
@@ -343,8 +337,9 @@ plot(out$time, out$incidence_obs,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
-lines(tt_data$date, tt_data$cases)
+lines(out$time, out$cases)
 ```
+Décalage des dates !!! On a pas le début de l'épidémie
 
 ```{r}
 indic_week <- tapply(out$incidence_obs, floor(out$time/7), sum)
