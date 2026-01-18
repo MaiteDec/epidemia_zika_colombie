@@ -21,6 +21,9 @@ library(outbreaks)
 library(dplyr)
 library(ggplot2)
 library(deSolve)
+library(abc)
+library(ggplot2)
+library(data.table)
 ```
 
 # Data
@@ -326,7 +329,7 @@ Incidence :
 out$incidence <- parameters["sigma_H"] * out$E_H
 
 # Cas observés : nbr de cas détectés par jour 
-taux_detec <- 0.2 #le faire varier : début infection (X%) vs fin infcetion (100%)
+taux_detec <- 1 #le faire varier : début infection (X%) vs fin infcetion (100%)
 out$incidence_obs <- taux_detec * parameters["p"] * out$incidence
 out$cumule <- cumsum(out$incidence_obs)
 
@@ -338,7 +341,7 @@ plot(out$time, out$incidence_obs,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
-lines(out$time, tt_data$cases)
+lines(out$time+40, tt_data$cases)
 
 plot(out$time, out$cumule,
      type = "l", lwd = 2,
@@ -388,22 +391,26 @@ plot(outA$time, outA$incidence*55000*0.2,
 ABC rejection
 
 ```{r}
-T = 1000
+T = 10000
 
 df_param <- data.frame(
-  dist = rep(NA, T+1),
-  beta = c(runif(T, min = 0, max = 0.5),0.5),
-  theta = c(runif(T, min = 0, max = 1.5),0.7),
-  p = c(runif(T, min = 0, max = 0.5),0.2)
+  dist_cumul = rep(NA, T),
+  dist_incidence = rep(NA, T),
+  cumul = rep(NA,T),
+  beta = runif(T, min = 0, max = 0.5),
+  theta = runif(T, min = 0, max = 1.5),
+  p = runif(T, min = 0.2, max = 0.6)
 )
+
+#df_serie <- data.frame(nrows = 147)
 
 for (i in 1:T+1){
   parameters <- c(
   N_H = 55000,
   beta = df_param[i,]$beta,
-  sigma_H = 1/5,
-  gamma_I = 1/7,
-  gamma_A = 1/7,
+  sigma_H = 1/5.7,
+  gamma_I = 1/4.7,
+  gamma_A = 1/4.7,
   p = df_param[i,]$p,
   theta = df_param[i,]$theta)
   
@@ -415,40 +422,51 @@ for (i in 1:T+1){
   method = "rk4")
   
   out <- as.data.frame(out)
-  out$incidence <- parameters["sigma_H"] * out$E_H * p
+  out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"]
   out$cumsum <- cumsum(out$incidence)
   
-  df_param[i,]$dist <- abs(out$cumsum[146]-928)
+  df_param[i,]$cumul <- out$cumsum[147]
+  df_param[i,]$dist_cumul <- (out$cumsum[147]-928)^2 
+  df_param[i,]$dist_incidence <- (out$incidence[147]-1)^2
+  
+  #df_serie <- cbind(df_serie, out$incidence)
 }
 
-df_param = df_param[order(df_param$dist, decreasing = FALSE),]
+
+df_param$dist_carre <- df_param$dist_cumul+df_param$dist_incidence
+df_param = df_param[order(df_param$dist_carre, decreasing = FALSE),]
 
 if (!require(GGally)) install.packages("GGally")
 library(GGally)
 
 df_subset <- df_param[c(1:500),c("beta","theta","p")]
 ggpairs(df_subset)
+
+setDT(df_param)
+df_cumul_tronc <- df_param[cumul<5000]
+ggplot(data = df_cumul_tronc)+
+  geom_point(x=df_cumul_tronc[,p], y= df_cumul_tronc[,beta], color = df_cumul_tronc[,cumul])
 ```
 
 Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épidémie. On voit dans nos données qu'il y a presque aucun nouveau cas à la fin. 
 
 ```{r}
-i=2
+i=1
 
 parameter_closest <- c(
   N_H = 55000,
-  beta = df_subset[i,]$beta,
-  sigma_H = 1/5,
-  gamma_I = 1/7,
-  gamma_A = 1/7,
-  p = df_subset[i,]$p,
-  theta = df_subset[i,]$theta)
+  beta = 0.27,
+  sigma_H = 1/5.7,
+  gamma_I = 1/4.7,
+  gamma_A = 1/4.7,
+  p = 0.4,
+  theta = 1.3048)
 
 out_close <- ode(
   y = init,
   times = times,
   func = SEIAR,
-  parms = parameters,
+  parms = parameter_closest,
   method = "rk4")
 
 out_close <- as.data.frame(out_close)
@@ -460,7 +478,17 @@ plot(out_close$cumule, col = "blue")
 lines(data$cumule, col = "red")
 ```
 
-Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.
+Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
+
+```{r}
+Tol = 0.1
+
+test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], sumstat =df_param[,.(dist_cumul,dist_incidence)], tol = Tol , method = "neuralnet")
+summary(test_abc_n)
+hist(test_abc_n)
+plot(test_abc_n, param = df_param[,.(beta,theta,p)])
+```
+
 
 Je tente autre méthode (pas encore prêt à faire tourner)
 
