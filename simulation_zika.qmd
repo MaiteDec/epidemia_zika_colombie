@@ -24,6 +24,13 @@ library(deSolve)
 library(abc)
 library(ggplot2)
 library(data.table)
+
+# install.packages("devtools")
+# Installer BRREWABC depuis GitHub
+library(devtools)
+# install_github("gaelbn/BRREWABC")
+library(BRREWABC)
+library(GGally)
 ```
 
 # Data
@@ -386,34 +393,49 @@ plot(outA$time, outA$incidence*55000*0.2,
 ```
 
 
-#Inférence des paramètres
-
-ABC rejection
+# Inférence des paramètres : ABC rejection
+Critère à optimiser : Somme des carrés des écarts (incidence à la fin de l'épidémie + incidence cumulée)
+La SSE pénalise fortement les écarts importants, ce qui la rend sensible aux valeurs aberrantes. Elle est adaptée lorsque les erreurs sont supposées suivre une distribution normale.   
+Si distribution non normale : erreur absolue moyenne (MAE)    
 
 ```{r}
-T = 10000
+stat_resum_data <- data.frame(dist_cumul = sum(data$cases), #inicidence cumulée
+  dist_incidence = data$cases[101], #incidence au dernier jour
+  max_pic = max(data$cases),
+  temp_pic = which.max(data$cases))
+```
+
+```{r}
+T = 1000
 
 df_param <- data.frame(
-  dist_cumul = rep(NA, T),
+  # Stat résumées : 
+  dist_cumul = rep(NA, T), 
   dist_incidence = rep(NA, T),
   cumul = rep(NA,T),
+  max_pic = rep(NA,T),
+  temp_pic = rep(NA,T),
+  # Priors testés : 
   beta = runif(T, min = 0, max = 0.5),
   theta = runif(T, min = 0, max = 1.5),
-  p = runif(T, min = 0.2, max = 0.6)
+  p = runif(T, min = 0.1, max = 0.8) #monter de 0.1 à 0.8 (c'est bcp, mais on teste)
 )
 
 #df_serie <- data.frame(nrows = 147)
 
-for (i in 1:T+1){
+for (i in 1:T){
+  
+  # Echantillonnage des param --------------------------------------------------
   parameters <- c(
   N_H = 55000,
   beta = df_param[i,]$beta,
-  sigma_H = 1/5.7,
+  sigma_H = 1/5.7, #
   gamma_I = 1/4.7,
   gamma_A = 1/4.7,
   p = df_param[i,]$p,
   theta = df_param[i,]$theta)
   
+  # Simulation des données -----------------------------------------------------
   out <- ode(
   y = init,
   times = times,
@@ -421,25 +443,29 @@ for (i in 1:T+1){
   parms = parameters,
   method = "rk4")
   
+  # Cacul des stat résumées ----------------------------------------------------
   out <- as.data.frame(out)
-  out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"]
+  out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"] # durée incubation x nbr d'exposés x proba symptomatique 
   out$cumsum <- cumsum(out$incidence)
   
+  # Calcul de la distance ------------------------------------------------------
   df_param[i,]$cumul <- out$cumsum[147]
-  df_param[i,]$dist_cumul <- (out$cumsum[147]-928)^2 
-  df_param[i,]$dist_incidence <- (out$incidence[147]-1)^2
+  df_param[i,]$dist_cumul <- ((out$cumsum[147]-stat_resum_data$dist_cumul)^2)/(stat_resum_data$dist_cumul^2) # ~1000
+  df_param[i,]$dist_incidence <- ((out$incidence[147]-stat_resum_data$dist_incidence)^2)/(stat_resum_data$dist_incidence^2) # ~1
+  df_param[i,]$max_pic <- ((max(out$incidence) - stat_resum_data$max_pic)^2)/(stat_resum_data$max_pic^2)
+  df_param[i,]$temp_pic <- ((which.max(out$incidence) - stat_resum_data$temp_pic)^2)/(stat_resum_data$temp_pic^2)
   
   #df_serie <- cbind(df_serie, out$incidence)
+  print(i)
 }
 
+# Distance SCE -----------------------------------------------------------------
+# Distance euclidienne : 
+df_param$dist_carre <- df_param$dist_cumul + df_param$dist_incidence + df_param$max_pic #+ df_param$temp_pic
+df_param = df_param[order(df_param$dist_carre, decreasing = FALSE),] # ranger les erreurs
 
-df_param$dist_carre <- df_param$dist_cumul+df_param$dist_incidence
-df_param = df_param[order(df_param$dist_carre, decreasing = FALSE),]
 
-if (!require(GGally)) install.packages("GGally")
-library(GGally)
-
-df_subset <- df_param[c(1:500),c("beta","theta","p")]
+df_subset <- df_param[c(1:500),c("beta","theta","p")] # garder les 500 meilleurs
 ggpairs(df_subset)
 
 setDT(df_param)
@@ -450,6 +476,7 @@ ggplot(data = df_cumul_tronc)+
 
 Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épidémie. On voit dans nos données qu'il y a presque aucun nouveau cas à la fin. 
 
+Calcul de la distribution a prosteriori : 
 ```{r}
 i=1
 
@@ -476,6 +503,9 @@ out_close$cumule <- cumsum(out_close$incidence)
 
 plot(out_close$cumule, col = "blue")
 lines(data$cumule, col = "red")
+
+plot(out_close$incidence, col = "blue")
+lines(data$cases, col = "red")
 ```
 
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
@@ -484,24 +514,14 @@ Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres
 Tol = 0.1
 
 test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], sumstat =df_param[,.(dist_cumul,dist_incidence)], tol = Tol , method = "neuralnet")
+
 summary(test_abc_n)
 hist(test_abc_n)
 plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 ```
 
-
+## ABC SMC 
 Je tente autre méthode (pas encore prêt à faire tourner)
-
-```{r}
-# Installer le package devtools s'il n'est pas déjà installé
-install.packages("devtools")
-
-# Installer BRREWABC depuis GitHub
-library(devtools)
-install_github("gaelbn/BRREWABC")
-
-library(BRREWABC)
-```
 
 ```{r}
 # Distributions a priori uniformes pour beta theta et p
