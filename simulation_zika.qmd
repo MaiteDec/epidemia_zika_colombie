@@ -36,11 +36,11 @@ library(GGally)
 # Data
 ```{r}
 data <- zika_sanandres_2015
+data$cumule <- cumsum(data$cases)
 ```
 
 ```{r}
 plot(data, pch = 19)
-data$cumule <- cumsum(data$cases)
 plot(x= data$date, y=data$cumule)
 
 ggplot(data, aes(x = date, y = cases))+
@@ -54,15 +54,16 @@ Pour avoir la bonne taille de data.frame (par rapport à la simulation)
 ```{r}
 tt_data <- seq(from = min(data$date), to = max(data$date), by = "day")
 tt_data <- data.frame(date = tt_data) %>%
-  left_join(., data, by = "date")
+  left_join(., data, by = "date") %>%
+  mutate(week = floor(as.numeric(date - min(date))/7))
 ```
 
 ## Données en cumulées par semaine depuis le début de suivi
 ```{r}
 data_sem <- tt_data %>%
-  mutate(week = floor(as.numeric(date - min(date))/7)) %>%
   group_by(week) %>%
-  summarize(cases = sum(cases, na.rm = TRUE))
+  summarize(cases = sum(cases, na.rm = TRUE)) %>%
+  mutate(cumule = cumsum(cases))
 ```
 
 ## Données météo 
@@ -304,7 +305,10 @@ parameters <- c(
   p     = 0.2,   # proportion symptomatique
   theta = 0.7    # infectiosité asympto
 )
+```
 
+
+```{r}
 init <- c(
   S_H = as.numeric(parameters["N_H"]) - 1,
   E_H = 0,
@@ -313,7 +317,8 @@ init <- c(
   R_H = 0
 )
 
-times <- seq(0, 146, by = 1) # mettre + long 
+times_obs <- seq(0, 146, by = 1) # mettre + long 
+times_sim <- seq(0, 500, by = 1) # mettre + long 
 ```
 
 ```{r}
@@ -405,23 +410,24 @@ stat_resum_data <- data.frame(dist_cumul = sum(data$cases), #inicidence cumulée
   temp_pic = which.max(data$cases))
 ```
 
+Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard !!! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !!
 ```{r}
-T = 1000
+T = 10000
 
 df_param <- data.frame(
   # Stat résumées : 
-  dist_cumul = rep(NA, T), 
-  dist_incidence = rep(NA, T),
-  cumul = rep(NA,T),
-  max_pic = rep(NA,T),
-  temp_pic = rep(NA,T),
+  # dist_cumul = rep(NA, T), 
+  SCE = rep(NA, T),
+  MAE = rep(NA, T),
+  MAE_inci = rep(NA, T),
+  cumul = rep(NA,T), #c'est quoi ça déjà ?
+  # max_pic = rep(NA,T),
+  # temp_pic = rep(NA,T),
   # Priors testés : 
-  beta = runif(T, min = 0, max = 0.5),
-  theta = runif(T, min = 0, max = 1.5),
+  beta = runif(T, min = 0, max = 0.8),
+  theta = runif(T, min = 0, max = 1.5), 
   p = runif(T, min = 0.1, max = 0.8) #monter de 0.1 à 0.8 (c'est bcp, mais on teste)
 )
-
-#df_serie <- data.frame(nrows = 147)
 
 for (i in 1:T){
   
@@ -438,34 +444,59 @@ for (i in 1:T){
   # Simulation des données -----------------------------------------------------
   out <- ode(
   y = init,
-  times = times,
+  times = times_sim, #sur le temps du modele : + long 
   func = SEIAR,
   parms = parameters,
   method = "rk4")
   
-  # Cacul des stat résumées ----------------------------------------------------
+  # Cacul incidence ----------------------------------------------------
   out <- as.data.frame(out)
   out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"] # durée incubation x nbr d'exposés x proba symptomatique 
-  out$cumsum <- cumsum(out$incidence)
+  
+  # Remettre les data au même niveau que le modèle : décélage tempo ---------------------------------------
+  # Prendre 1er temps où inicidence obs = 1 (1er cas)
+  t_align <- which(out$incidence >= 1)[1] 
+  # si t_align = NA : jamais inicidence de 1, on vire le modèle 
+  if(!is.na(t_align)){
+    out <- out[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
+    out <- cbind(out, tt_data) #lien avec le data des données 
+  
+    out_week <- out %>%
+      mutate(week = floor(as.numeric(date - min(date))/7)) %>% #création des semianes 
+      group_by(week) %>%
+      summarize(cases_obs = sum(cases, na.rm = TRUE), #somme par semaine obs 
+                cases_sim = sum(incidence, na.rm = TRUE)) %>%
+      ungroup() %>%
+      arrange(week) %>%
+      mutate(cases_obs_cum = cumsum(cases_obs), # cumul pour chaque semaine 
+            cases_sim_cum = cumsum(cases_sim))
+# distance <- MAE_week + 0.1 * penalty_final 
   
   # Calcul de la distance ------------------------------------------------------
-  df_param[i,]$cumul <- out$cumsum[147]
-  df_param[i,]$dist_cumul <- ((out$cumsum[147]-stat_resum_data$dist_cumul)^2)/(stat_resum_data$dist_cumul^2) # ~1000
-  df_param[i,]$dist_incidence <- ((out$incidence[147]-stat_resum_data$dist_incidence)^2)/(stat_resum_data$dist_incidence^2) # ~1
-  df_param[i,]$max_pic <- ((max(out$incidence) - stat_resum_data$max_pic)^2)/(stat_resum_data$max_pic^2)
-  df_param[i,]$temp_pic <- ((which.max(out$incidence) - stat_resum_data$temp_pic)^2)/(stat_resum_data$temp_pic^2)
+    dist <- out_week %>% 
+      summarise(SCE = sum((cases_obs_cum - cases_sim_cum)^2), # SSE
+                MAE = mean(abs(cases_obs - cases_sim))) # MAE
   
-  #df_serie <- cbind(df_serie, out$incidence)
-  print(i)
+  # Valeur derniere incidence cumulée
+    last_incidence <-  abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
+  
+    df_param[i,]$SCE <- dist$SCE
+    df_param[i,]$MAE_inci <- dist$MAE + 0.1*last_incidence
+    df_param[i,]$MAE <- dist$MAE
+  }
+  
+  
+    # print(i)
 }
 
 # Distance SCE -----------------------------------------------------------------
-# Distance euclidienne : 
-df_param$dist_carre <- df_param$dist_cumul + df_param$dist_incidence + df_param$max_pic #+ df_param$temp_pic
-df_param = df_param[order(df_param$dist_carre, decreasing = FALSE),] # ranger les erreurs
-
+df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
 
 df_subset <- df_param[c(1:500),c("beta","theta","p")] # garder les 500 meilleurs
+```
+
+
+```{r}
 ggpairs(df_subset)
 
 setDT(df_param)
@@ -482,38 +513,82 @@ i=1
 
 parameter_closest <- c(
   N_H = 55000,
-  beta = 0.27,
+  beta = df_subset[i,]$beta,
   sigma_H = 1/5.7,
   gamma_I = 1/4.7,
   gamma_A = 1/4.7,
-  p = 0.4,
-  theta = 1.3048)
+  p = df_subset[i,]$p,
+  theta = df_subset[i,]$theta)
 
 out_close <- ode(
   y = init,
-  times = times,
+  times = times_sim,
   func = SEIAR,
   parms = parameter_closest,
   method = "rk4")
 
 out_close <- as.data.frame(out_close)
 out_close$incidence <- parameter_closest["sigma_H"] * out_close$E_H * parameter_closest["p"]
-out_close$cumule <- cumsum(out_close$incidence)
-#data$cumule <- cumsum(data$cases)
-
-plot(out_close$cumule, col = "blue")
-lines(data$cumule, col = "red")
-
-plot(out_close$incidence, col = "blue")
-lines(data$cases, col = "red")
 ```
+
+Remettre au bon pas temporel :
+```{r}
+t_align <- which(out_close$incidence >= 1)[1]
+out_close_tempo <- out_close[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
+
+# lier avec le dataframe des données
+df_out <- cbind(out_close_tempo, tt_data) %>%
+  group_by(week) %>% # somme par semaine
+  summarize(cases_obs = sum(cases, na.rm = TRUE), 
+            cases_sim = sum(incidence, na.rm = TRUE)) %>%
+  mutate(cumule_obs = cumsum(cases_obs), 
+         cumule_sim = cumsum(cases_sim))
+  
+
+plot(df_out$week, df_out$cumule_obs,  col = "blue")
+lines(df_out$cumule_sim, col = "red")
+
+plot(df_out$week, df_out$cases_obs,  col = "blue")
+lines(df_out$cases_sim, col = "red")
+
+plot(df_out$cases_sim)
+plot(df_out$cumule_sim)
+```
+
+Pas temporel avec début à incidence du modele = 1 + délai de 20jours :   
+C'est bcp mais ça coincide
+```{r}
+t_align <- which(out_close$incidence >= 1)[1]
+out_close_tempo <- (out_close[t_align:(t_align + nrow(tt_data) - 1), ]+10) # prendre 147 jours après le 1er cas détecté par le modèle
+
+# lier avec le dataframe des données
+df_out <- cbind(out_close_tempo, tt_data) %>%
+  group_by(week) %>% # somme par semaine
+  summarize(cases_obs = sum(cases, na.rm = TRUE), 
+            cases_sim = sum(incidence, na.rm = TRUE)) %>%
+  mutate(cumule_obs = cumsum(cases_obs), 
+         cumule_sim = cumsum(cases_sim))
+  
+
+plot(df_out$week, df_out$cumule_obs,  col = "blue")
+lines(df_out$cumule_sim, col = "red")
+
+plot(df_out$week, df_out$cases_obs,  col = "blue")
+lines(df_out$cases_sim, col = "red")
+
+plot(df_out$cases_sim)
+plot(df_out$cumule_sim)
+```
+
 
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
 
 ```{r}
 Tol = 0.1
 
-test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], sumstat =df_param[,.(dist_cumul,dist_incidence)], tol = Tol , method = "neuralnet")
+test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], 
+                  sumstat = df_param[,.(dist_cumul, MAE)], 
+                  tol = Tol , method = "neuralnet")
 
 summary(test_abc_n)
 hist(test_abc_n)
