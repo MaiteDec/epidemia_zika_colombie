@@ -37,6 +37,8 @@ library(GGally)
 ```{r}
 data <- zika_sanandres_2015
 data$cumule <- cumsum(data$cases)
+data$cases_ajuste <- data$cases
+data[data]
 ```
 
 ```{r}
@@ -108,7 +110,7 @@ parameters <- c(
   N_H = 54500,
 
   # Transmission 
-  beta = 0.5, #A MODIFIER !!!!
+  beta = 0.5, 
 
   # Humains
   sigma_H = 1/5.7, # 1/ durée incubation
@@ -124,9 +126,7 @@ parameters <- c(
 ```{r}
 init <- c(
   S_H = as.numeric(parameters["N_H"]) - 1,
-  # E_H = 0,
-  # I_H = 1,
-  E_H = 1, 
+  E_H = 1,
   I_H = 0,
   A_H = 0,
   R_H = 0
@@ -136,6 +136,7 @@ times_obs <- seq(0, 146, by = 1) # mettre + long
 times_sim <- seq(0, 500, by = 1) # mettre + long 
 ```
 
+Test du modèle en changeant les paramètres à la main
 ```{r}
 out <- ode(
   y = init,
@@ -218,30 +219,23 @@ Critère à optimiser : Somme des carrés des écarts (incidence à la fin de l'
 La SSE pénalise fortement les écarts importants, ce qui la rend sensible aux valeurs aberrantes. Elle est adaptée lorsque les erreurs sont supposées suivre une distribution normale.   
 Si distribution non normale : erreur absolue moyenne (MAE)    
 
-```{r}
-stat_resum_data <- data.frame(dist_cumul = sum(data$cases), #inicidence cumulée
-  dist_incidence = data$cases[101], #incidence au dernier jour
-  max_pic = max(data$cases),
-  temp_pic = which.max(data$cases))
-```
 
-Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard !!! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !!
+Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
 ```{r}
 T = 1000
 
 df_param <- data.frame(
   # Stat résumées : 
   # dist_cumul = rep(NA, T), 
-  SCE = rep(NA, T),
+  #SCE = rep(NA, T),
   MAE = rep(NA, T),
-  MAE_inci = rep(NA, T),
-  cumul = rep(NA,T), #c'est quoi ça déjà ?
+  #MAE_inci = rep(NA, T),
   # max_pic = rep(NA,T),
   # temp_pic = rep(NA,T),
   # Priors testés : 
-  beta = runif(T, min = 0, max = 0.8),
+  beta = runif(T, min = 0, max = 3), 
   theta = runif(T, min = 0, max = 1.5), 
-  p = runif(T, min = 0.1, max = 0.8) #monter de 0.1 à 0.8 (c'est bcp, mais on teste)
+  p = runif(T, min = 0.1, max = 0.8) 
 )
 
 for (i in 1:T){
@@ -249,10 +243,10 @@ for (i in 1:T){
   # Echantillonnage des param --------------------------------------------------
   parameters <- c(
   N_H = 54500,
-  beta = df_param[i,]$beta,
-  sigma_H = 1/5.7, #
-  gamma_I = 1/4.7,
-  gamma_A = 1/4.7,
+  beta = df_param[i,]$p,
+  sigma_H = 1/5.7, #selon biblio
+  gamma_I = 1/4.7, #selon biblio
+  gamma_A = 1/4.7, #selon biblio
   p = df_param[i,]$p,
   theta = df_param[i,]$theta)
   
@@ -268,13 +262,13 @@ for (i in 1:T){
   out <- as.data.frame(out)
   out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"] # durée incubation x nbr d'exposés x proba symptomatique 
   
-  # Remettre les data au même niveau que le modèle : décélage tempo ---------------------------------------
+  # Remettre les data au même niveau que le modèle : décqlage tempo ---------------------------------------
   # Prendre 1er temps où inicidence obs = 1 (1er cas)
   t_align <- which(out$incidence >= 1)[1] 
-  # si t_align = NA : jamais inicidence de 1, on vire le modèle 
+  # si t_align = NA : jamais inicidence de 1, on n'enregistre pas la simulation 
   if(!is.na(t_align)){
     out <- out[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
-    out <- cbind(out, tt_data) #lien avec le data des données 
+    out <- cbind(out, tt_data) #jointure avec le tableau des données observées 
   
     out_week <- out %>%
       mutate(week = floor(as.numeric(date - min(date))/7)) %>% #création des semianes 
@@ -288,15 +282,18 @@ for (i in 1:T){
 # distance <- MAE_week + 0.1 * penalty_final 
   
   # Calcul de la distance ------------------------------------------------------
-    dist <- out_week %>% 
-      summarise(SCE = sum((cases_obs - cases_sim)^2), # SSE
-                MAE = mean(abs(cases_obs - cases_sim))) # MAE
+    # dist <- out_week %>% 
+    #   summarise(SCE = sum((cases_obs_cum - cases_sim_cum)^2), # SSE sur l'incidence cumulée
+    #             MAE = mean(abs(cases_obs - cases_sim))) # MAE sur l'incidence
+      dist <- out_week %>% 
+       summarise(MAE = mean(abs(cases_obs_cum - cases_sim_cum))) # MAE sur l'incidence cumulée
+  
   
   # Valeur derniere incidence cumulée
-    last_incidence <- abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
+    #last_incidence <- abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
   
-    df_param[i,]$SCE <- dist$SCE
-    df_param[i,]$MAE_inci <- dist$MAE + 0.1*last_incidence
+    #df_param[i,]$SCE <- dist$SCE
+    #df_param[i,]$MAE_inci <- dist$MAE + 0.1*last_incidence
     df_param[i,]$MAE <- dist$MAE
   }
   
@@ -308,22 +305,16 @@ for (i in 1:T){
 # df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
 df_param = df_param[order(df_param$SCE, decreasing = FALSE),] 
 
-df_subset <- df_param[c(1:500),c("beta","theta","p")] # garder les 500 meilleurs
+df_subset <- df_param[c(1:50),c("beta","theta","p")] # garder les x meilleurs
 ```
 
 
 ```{r}
 ggpairs(df_subset)
-
-setDT(df_param)
-df_cumul_tronc <- df_param[cumul<5000]
-ggplot(data = df_cumul_tronc)+
-  geom_point(x=df_cumul_tronc[,p], y= df_cumul_tronc[,beta], color = df_cumul_tronc[,cumul])
 ```
 
-Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épidémie. On voit dans nos données qu'il y a presque aucun nouveau cas à la fin. 
 
-Calcul de la distribution a prosteriori : 
+Simulation de la meilleure distance : 
 ```{r}
 i=1
 
@@ -347,7 +338,7 @@ out_close <- as.data.frame(out_close)
 out_close$incidence <- parameter_closest["sigma_H"] * out_close$E_H * parameter_closest["p"]
 ```
 
-Remettre au bon pas temporel :
+Remettre au bon pas temporel et affichage :
 ```{r}
 t_align <- which(out_close$incidence >= 1)[1]
 out_close_tempo <- out_close[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
@@ -371,71 +362,33 @@ plot(df_out$cases_sim)
 plot(df_out$cumule_sim)
 ```
 
-Pas temporel avec début à incidence du modele = 1 + délai de 20jours :   
-C'est bcp mais ça coincide
-```{r}
-t_align <- which(out_close$incidence >= 1)[1]
-out_close_tempo <- (out_close[t_align:(t_align + nrow(tt_data) - 1), ]+10) # prendre 147 jours après le 1er cas détecté par le modèle
-
-# lier avec le dataframe des données
-df_out <- cbind(out_close_tempo, tt_data) %>%
-  group_by(week) %>% # somme par semaine
-  summarize(cases_obs = sum(cases, na.rm = TRUE), 
-            cases_sim = sum(incidence, na.rm = TRUE)) %>%
-  mutate(cumule_obs = cumsum(cases_obs), 
-         cumule_sim = cumsum(cases_sim))
-  
-
-plot(df_out$week, df_out$cumule_obs,  col = "blue")
-points(df_out$cumule_sim, col = "red")
-
-plot(df_out$week, df_out$cases_obs,  col = "blue")
-points(df_out$cases_sim, col = "red")
-
-plot(df_out$cases_sim)
-plot(df_out$cumule_sim)
-```
-
-
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
 
+
+## Cross validation de nos paramètres
+```{r}
+setDT(df_param)
+
+cv_zika <- cv4abc(param = df_param[,.(beta,theta,p)], sumstat = df_param[,MAE], nval = 500, tols =c(0.1), method = "rejection")
+
+plot(cv_zika)
+summary(cv_zika)
+```
+Très mauvais pour beta et theta
+
+
+## ABC rejection
 ```{r}
 Tol = 0.1
+setDT(df_param)
 
-test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], 
+test_abc_n <- abc(target = c(0), param = df_param[,.(beta,theta,p)], 
                   # sumstat = df_param[,.(dist_cumul, MAE)], 
                   sumstat = df_param[,MAE], 
-                  tol = Tol , method = "neuralnet")
+                  tol = Tol , method = "rejection")
 
 summary(test_abc_n)
 hist(test_abc_n)
 plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 ```
-
-## ABC SMC 
-Je tente autre méthode (pas encore prêt à faire tourner)
-
-```{r}
-# Distributions a priori uniformes pour beta theta et p
-priors <- list(
-  beta = list(dist = "unif", min = 0, max = 1),
-  theta = list(dist = "unif", min = 0, max = 1.5),
-  p = list(dist = "unif", min = 0, max = 1)
-)
-```
-
-```{r}
-# Fonction pour calculer les statistiques résumés
-summary_stats <- function(data) {
-  return(data$I)
-}
-
-# Calcul des statistiques résumés observés
-summary_obs <- summary_stats(data.frame(I = I_obs))
-
-# Fonction de distance (somme des carrés des différences)
-distance_function <- function(summary_sim, summary_obs) {
-  return(sum((summary_sim - summary_obs)^2))
-}
-```
-
+Donne quelque chose mais on peut pas faire confiance si nos paramètres sont pas identifiables
