@@ -222,7 +222,7 @@ Si distribution non normale : erreur absolue moyenne (MAE)
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
 ```{r}
-T = 1000
+T = 100
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -233,7 +233,7 @@ df_param <- data.frame(
   # max_pic = rep(NA,T),
   # temp_pic = rep(NA,T),
   # Priors testés : 
-  beta = runif(T, min = 0, max = 3),
+  beta = runif(T, min = 0, max = 3), 
   theta = runif(T, min = 0, max = 1.5), 
   p = runif(T, min = 0.1, max = 0.8) 
 )
@@ -243,7 +243,7 @@ for (i in 1:T){
   # Echantillonnage des param --------------------------------------------------
   parameters <- c(
   N_H = 54500,
-  beta = df_param[i,]$beta,
+  beta = df_param[i,]$p,
   sigma_H = 1/5.7, #selon biblio
   gamma_I = 1/4.7, #selon biblio
   gamma_A = 1/4.7, #selon biblio
@@ -310,9 +310,6 @@ df_subset <- df_param[c(1:50),c("beta","theta","p")] # garder les x meilleurs
 
 ```{r}
 ggpairs(df_subset)
-
-setDT(df_param)
-df_cumul_tronc <- df_param[cumul<5000]
 ```
 
 
@@ -369,6 +366,8 @@ Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres
 
 ##Cross validation de nos paramètres
 ```{r}
+setDT(df_param)
+
 cv_zika <- cv4abc(param = df_param[,.(beta,theta,p)], sumstat = df_param[,MAE], nval = 500, tols =c(0.1), method = "rejection")
 
 plot(cv_zika)
@@ -380,6 +379,7 @@ Très mauvais pour beta et theta
 ##ABC rejection
 ```{r}
 Tol = 0.1
+setDT(df_param)
 
 test_abc_n <- abc(target = c(0), param = df_param[,.(beta,theta,p)], 
                   # sumstat = df_param[,.(dist_cumul, MAE)], 
