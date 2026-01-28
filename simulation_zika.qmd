@@ -412,7 +412,7 @@ stat_resum_data <- data.frame(dist_cumul = sum(data$cases), #inicidence cumulée
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard !!! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !!
 ```{r}
-T = 10000
+T = 1000
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -435,7 +435,7 @@ for (i in 1:T){
   parameters <- c(
   N_H = 55000,
   beta = df_param[i,]$beta,
-  sigma_H = 1/5.7, #
+  sigma_H = 1/5.7, 
   gamma_I = 1/4.7,
   gamma_A = 1/4.7,
   p = df_param[i,]$p,
@@ -492,7 +492,7 @@ for (i in 1:T){
 # Distance SCE -----------------------------------------------------------------
 df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
 
-df_subset <- df_param[c(1:500),c("beta","theta","p")] # garder les 500 meilleurs
+df_subset <- df_param[c(1:50),c("beta","theta","p")] # garder les 500 meilleurs
 ```
 
 
@@ -507,9 +507,9 @@ ggplot(data = df_cumul_tronc)+
 
 Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épidémie. On voit dans nos données qu'il y a presque aucun nouveau cas à la fin. 
 
-Calcul de la distribution a prosteriori : 
+Calcul de la meilleure distance : 
 ```{r}
-i=1
+i=2
 
 parameter_closest <- c(
   N_H = 55000,
