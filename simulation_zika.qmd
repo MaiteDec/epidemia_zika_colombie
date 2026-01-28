@@ -77,193 +77,6 @@ data_sem <- tt_data %>%
 #   left_join(., era5, by = c("date" = "valid_time"))
 ```
 
-# SEIR + SEI discret
-```{r}
-seirs_ode <- function(t, state, pars) {
-  with(as.list(c(state, pars)), {
-    
-    N_H <- S_H + E_H + I_H + R_H
-    N_M <- S_M + E_M + I_M
-    
-    lambda_H <- a * b_MH * I_M / N_H  # force of infection
-    lambda_M <- a * b_HM * I_H / N_H
-    
-    # Humains 
-    dS_H <-  - lambda_H * S_H 
-    dE_H <-  lambda_H * S_H - sigma_H * E_H
-    dI_H <-  sigma_H * E_H - gamma_H * I_H
-    dR_H <-  gamma_H * I_H
-    
-    # Moustiques
-    dS_M <-  mu_M * N_M - lambda_M * S_M - mu_M * S_M
-    dE_M <-  lambda_M * S_M - sigma_M * E_M - mu_M * E_M
-    dI_M <-  sigma_M * E_M - mu_M * I_M
-
-    list(c(dS_H, dE_H, dI_H, dR_H,
-      dS_M, dE_M, dI_M))
-  })
-}
-```
-
-Paramètres : 
-```{r}
-parameters <- c(
-
-  # Populations
-  N_H = 55000,
-  N_M = 30000, # ?
-
-  # Transmission
-  a     = 0.5,      # piqûres / moustique / jour
-  b_MH  = 0.3,      # moustique -> humain
-  b_HM  = 0.3,      # humain -> moustique
-
-  # Humains
-  sigma_H = 1/5,    # durée incubation humaine : 5j
-  gamma_H = 1/5,    # durée infection : 4.7j
-
-  # Moustiques
-  sigma_M = 1/10,   # durée incubation : 10j ?
-  mu_M    = 1/15    # durée vie : 10j ?
-)
-```
-
-Insecticide dans les avions : transmission du zika à San Andrès vient de H
-```{r}
-init <- c(
-  S_H = as.numeric(parameters["N_H"] - 1),
-  E_H = 0,
-  I_H = 1,
-  R_H = 0,
-
-  S_M = as.numeric(parameters["N_M"]),
-  E_M = 0,
-  I_M = 0
-)
-
-times <- seq(0, 146, by = 1) # mettre + long 
-
-out <- ode(
-  y = init,
-  times = times,
-  func = seirs_ode,
-  parms = parameters,
-  method = "rk4"
-)
-
-out <- as.data.frame(out)
-```
-
-Incidence : nombre de nouvelles infectionns par jour 
-```{r}
-out$incidence <- parameters["sigma_H"] * out$E_H
-
-plot(out$time, out$incidence,
-     type = "l", lwd = 2,
-     xlab = "Temps (jours)",
-     ylab = "Incidence journalière")
-```
-
-a, B_MH, b_HM, NM pas identifiables (juste leur combi)
-
-# Asympto E divisé en I et A
-```{r}
-SEIAR_SEI <- function(t, state, parameters) {
-
-  with(as.list(c(state, parameters)), {
-
-    # Forces d'infection
-    lambda_H <- a * b_MH * I_M / N_H
-    lambda_M <- a * b_HM * (I_H + theta * A_H) / N_H
-
-    # Humains
-    dS_H <- -lambda_H * S_H
-    dE_H <-  lambda_H * S_H - sigma_H * E_H
-    dI_H <-  p * sigma_H * E_H - gamma_I * I_H
-    dA_H <- (1 - p) * sigma_H * E_H - gamma_A * A_H
-    dR_H <-  gamma_I * I_H + gamma_A * A_H
-
-    # Moustiques
-    dS_M <-  mu_M * N_M - lambda_M * S_M - mu_M * S_M
-    dE_M <-  lambda_M * S_M - sigma_M * E_M - mu_M * E_M
-    dI_M <-  sigma_M * E_M - mu_M * I_M
-
-    list(c(
-      dS_H, dE_H, dI_H, dA_H, dR_H,
-      dS_M, dE_M, dI_M
-    ))
-  })
-}
-
-```
-
-```{r}
-parameters <- c(
-  
-  # Taille pop
-  N_H = 55000,
-  N_M = 30000, #?
-
-  p     = 0.2,    # proportion symptomatique
-  theta = 0.7,    # infectiosité asympto
-  
-  # Transmission
-  a     = 0.5,      # piqûres / moustique / jour
-  b_MH  = 0.3,      # moustique -> humain
-  b_HM  = 0.3,      # humain -> moustique
-
-  # Humains
-  sigma_H = 1/5,    # durée incubation humaine : 5j
-  gamma_I = 1/7,
-  gamma_A = 1/7,    # durée infection : 4.7j
-
-  # Moustiques
-  sigma_M = 1/10,   # durée incubation : 10j ?
-  mu_M    = 1/15    # durée vie : 10j ?
-)
-
-```
-
-```{r}
-init <- c(
-  S_H = as.numeric(parameters["N_H"]) - 1,
-  E_H = 0,
-  I_H = 1,
-  A_H = 0,
-  R_H = 0,
-
-  S_M = as.numeric(parameters["N_M"]),
-  E_M = 0,
-  I_M = 0
-)
-
-times <- seq(0, 146, by = 1) # mettre + long 
-```
-
-```{r}
-out <- ode(
-  y = init,
-  times = times,
-  func = SEIAR_SEI,
-  parms = parameters,
-  method = "rk4"
-)
-
-out <- as.data.frame(out)
-```
-
-```{r}
-out$incidence <- parameters["sigma_H"] * out$E_H
-```
-
-```{r}
-plot(out$time, out$incidence * 55000*0.2,
-     type = "l", lwd = 2,
-     xlab = "Temps (jours)",
-     ylab = "Incidence journalière")
-lines(date$cases)
-```
-
 # Sans les moustiques avec Asympto E divisé en I et A
 ```{r}
 SEIAR <- function(t, state, parameters) {
@@ -292,7 +105,7 @@ SEIAR <- function(t, state, parameters) {
 parameters <- c(
   
   # Taille pop
-  N_H = 55000,
+  N_H = 54500,
 
   # Transmission 
   beta = 0.5, #A MODIFIER !!!!
@@ -433,7 +246,7 @@ for (i in 1:T){
   
   # Echantillonnage des param --------------------------------------------------
   parameters <- c(
-  N_H = 55000,
+  N_H = 54500,
   beta = df_param[i,]$beta,
   sigma_H = 1/5.7, 
   gamma_I = 1/4.7,
@@ -478,7 +291,7 @@ for (i in 1:T){
                 MAE = mean(abs(cases_obs - cases_sim))) # MAE
   
   # Valeur derniere incidence cumulée
-    last_incidence <-  abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
+    last_incidence <- abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
   
     df_param[i,]$SCE <- dist$SCE
     df_param[i,]$MAE_inci <- dist$MAE + 0.1*last_incidence
@@ -509,10 +322,14 @@ Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épid
 
 Calcul de la meilleure distance : 
 ```{r}
+<<<<<<< HEAD
 i=2
+=======
+i=4
+>>>>>>> bbe65438542031aae6ae0d01c7408089df8b16e7
 
 parameter_closest <- c(
-  N_H = 55000,
+  N_H = 54500,
   beta = df_subset[i,]$beta,
   sigma_H = 1/5.7,
   gamma_I = 1/4.7,
@@ -587,7 +404,8 @@ Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres
 Tol = 0.1
 
 test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], 
-                  sumstat = df_param[,.(dist_cumul, MAE)], 
+                  # sumstat = df_param[,.(dist_cumul, MAE)], 
+                  sumstat = df_param[,MAE], 
                   tol = Tol , method = "neuralnet")
 
 summary(test_abc_n)
