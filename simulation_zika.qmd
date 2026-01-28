@@ -111,9 +111,9 @@ parameters <- c(
   beta = 0.5, #A MODIFIER !!!!
 
   # Humains
-  sigma_H = 1/5,
-  gamma_I = 1/7,
-  gamma_A = 1/7,
+  sigma_H = 1/5.7,
+  gamma_I = 1/4.7,
+  gamma_A = 1/4.7,
 
   p     = 0.2,   # proportion symptomatique
   theta = 0.7    # infectiosité asympto
@@ -124,8 +124,8 @@ parameters <- c(
 ```{r}
 init <- c(
   S_H = as.numeric(parameters["N_H"]) - 1,
-  E_H = 0,
-  I_H = 1,
+  E_H = 1,
+  I_H = 0,
   A_H = 0,
   R_H = 0
 )
@@ -225,7 +225,7 @@ stat_resum_data <- data.frame(dist_cumul = sum(data$cases), #inicidence cumulée
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard !!! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !!
 ```{r}
-T = 1000
+T = 10000
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -237,7 +237,7 @@ df_param <- data.frame(
   # max_pic = rep(NA,T),
   # temp_pic = rep(NA,T),
   # Priors testés : 
-  beta = runif(T, min = 0, max = 0.8),
+  beta = runif(T, min = 0, max = 3),
   theta = runif(T, min = 0, max = 1.5), 
   p = runif(T, min = 0.1, max = 0.8) #monter de 0.1 à 0.8 (c'est bcp, mais on teste)
 )
@@ -305,7 +305,7 @@ for (i in 1:T){
 # Distance SCE -----------------------------------------------------------------
 df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
 
-df_subset <- df_param[c(1:50),c("beta","theta","p")] # garder les 500 meilleurs
+df_subset <- df_param[c(1:500),c("beta","theta","p")] # garder les 500 meilleurs
 ```
 
 
@@ -322,11 +322,7 @@ Si on prend le cumul à la fin, c'est pas grave si on a pas le début de l'épid
 
 Calcul de la meilleure distance : 
 ```{r}
-<<<<<<< HEAD
-i=2
-=======
-i=4
->>>>>>> bbe65438542031aae6ae0d01c7408089df8b16e7
+i=1
 
 parameter_closest <- c(
   N_H = 54500,
@@ -401,42 +397,22 @@ plot(df_out$cumule_sim)
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
 
 ```{r}
+cv_zika <- cv4abc(param = df_param[,.(beta,theta,p)], sumstat = df_param[,MAE], nval = 500, tols =c(0.1), method = "rejection")
+
+plot(cv_zika)
+summary(cv_zika)
+```
+
+
+```{r}
 Tol = 0.1
 
-test_abc_n <- abc(target = c(928,1), param = df_param[,.(beta,theta,p)], 
+test_abc_n <- abc(target = c(0), param = df_param[,.(beta,theta,p)], 
                   # sumstat = df_param[,.(dist_cumul, MAE)], 
                   sumstat = df_param[,MAE], 
-                  tol = Tol , method = "neuralnet")
+                  tol = Tol , method = "rejection")
 
 summary(test_abc_n)
 hist(test_abc_n)
 plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 ```
-
-## ABC SMC 
-Je tente autre méthode (pas encore prêt à faire tourner)
-
-```{r}
-# Distributions a priori uniformes pour beta theta et p
-priors <- list(
-  beta = list(dist = "unif", min = 0, max = 1),
-  theta = list(dist = "unif", min = 0, max = 1.5),
-  p = list(dist = "unif", min = 0, max = 1)
-)
-```
-
-```{r}
-# Fonction pour calculer les statistiques résumés
-summary_stats <- function(data) {
-  return(data$I)
-}
-
-# Calcul des statistiques résumés observés
-summary_obs <- summary_stats(data.frame(I = I_obs))
-
-# Fonction de distance (somme des carrés des différences)
-distance_function <- function(summary_sim, summary_obs) {
-  return(sum((summary_sim - summary_obs)^2))
-}
-```
-
