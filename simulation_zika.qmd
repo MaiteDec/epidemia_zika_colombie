@@ -222,11 +222,8 @@ Si distribution non normale : erreur absolue moyenne (MAE)
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
 ```{r}
-<<<<<<< HEAD
 T = 10000
-=======
-T = 1000
->>>>>>> c30d5601a8e78f0d4b0f979f28c21ed0195dbe50
+
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -311,6 +308,10 @@ for (i in 1:T){
 df_param = df_param[order(df_param$SCE, decreasing = FALSE),] 
 
 df_subset <- df_param[c(1:500),c("beta","theta")] # garder les x meilleurs
+```
+
+```{r}
+write.table(df_param, "simul_beta_theta.csv", sep="t",dec=",", na=" ")
 ```
 
 
