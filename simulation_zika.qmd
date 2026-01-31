@@ -113,8 +113,8 @@ parameters <- c(
   beta = 0.5, 
 
   # Humains
-  sigma_H = 1/5.7,
-  gamma_I = 1/4.7,
+  sigma_H = 1/5.7, # 1/ durée incubation
+  gamma_I = 1/4.7, # 1/ duree infection
   gamma_A = 1/4.7,
 
   p     = 0.2,   # proportion symptomatique
@@ -222,7 +222,11 @@ Si distribution non normale : erreur absolue moyenne (MAE)
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
 ```{r}
+<<<<<<< HEAD
 T = 10000
+=======
+T = 1000
+>>>>>>> c30d5601a8e78f0d4b0f979f28c21ed0195dbe50
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -288,7 +292,7 @@ for (i in 1:T){
     #             MAE = mean(abs(cases_obs - cases_sim))) # MAE sur l'incidence
       dist <- out_week %>% 
        summarise(MAE = mean(abs(cases_obs_cum - cases_sim_cum))) # MAE sur l'incidence cumulée
-    
+  
   
   # Valeur derniere incidence cumulée
     #last_incidence <- abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
@@ -303,7 +307,8 @@ for (i in 1:T){
 }
 
 # Distance SCE -----------------------------------------------------------------
-df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
+# df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
+df_param = df_param[order(df_param$SCE, decreasing = FALSE),] 
 
 df_subset <- df_param[c(1:500),c("beta","theta")] # garder les x meilleurs
 ```
@@ -365,7 +370,7 @@ plot(df_out$cumule_sim)
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
 
 
-##Cross validation de nos paramètres
+## Cross validation de nos paramètres
 ```{r}
 setDT(df_param)
 
@@ -377,7 +382,7 @@ summary(cv_zika)
 Très mauvais pour beta et theta
 
 
-##ABC rejection
+## ABC rejection
 ```{r}
 Tol = 0.1
 setDT(df_param)
