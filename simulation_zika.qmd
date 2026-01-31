@@ -222,7 +222,7 @@ Si distribution non normale : erreur absolue moyenne (MAE)
 
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
 ```{r}
-T = 100
+T = 10000
 
 df_param <- data.frame(
   # Stat résumées : 
@@ -234,8 +234,8 @@ df_param <- data.frame(
   # temp_pic = rep(NA,T),
   # Priors testés : 
   beta = runif(T, min = 0, max = 3), 
-  theta = runif(T, min = 0, max = 1.5), 
-  p = runif(T, min = 0.1, max = 0.8) 
+  theta = runif(T, min = 0, max = 1)#, 
+  #p = runif(T, min = 0.1, max = 0.8) 
 )
 
 for (i in 1:T){
@@ -243,11 +243,12 @@ for (i in 1:T){
   # Echantillonnage des param --------------------------------------------------
   parameters <- c(
   N_H = 54500,
-  beta = df_param[i,]$p,
+  beta = df_param[i,]$beta,
   sigma_H = 1/5.7, #selon biblio
   gamma_I = 1/4.7, #selon biblio
   gamma_A = 1/4.7, #selon biblio
-  p = df_param[i,]$p,
+  #p = df_param[i,]$p,
+  p = 0.2,
   theta = df_param[i,]$theta)
   
   # Simulation des données -----------------------------------------------------
@@ -304,7 +305,7 @@ for (i in 1:T){
 # Distance SCE -----------------------------------------------------------------
 df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
 
-df_subset <- df_param[c(1:50),c("beta","theta","p")] # garder les x meilleurs
+df_subset <- df_param[c(1:500),c("beta","theta")] # garder les x meilleurs
 ```
 
 
@@ -323,7 +324,7 @@ parameter_closest <- c(
   sigma_H = 1/5.7,
   gamma_I = 1/4.7,
   gamma_A = 1/4.7,
-  p = df_subset[i,]$p,
+  p = 0.2,
   theta = df_subset[i,]$theta)
 
 out_close <- ode(
@@ -368,7 +369,7 @@ Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres
 ```{r}
 setDT(df_param)
 
-cv_zika <- cv4abc(param = df_param[,.(beta,theta,p)], sumstat = df_param[,MAE], nval = 500, tols =c(0.1), method = "rejection")
+cv_zika <- cv4abc(param = df_param[,.(beta,theta)], sumstat = df_param[,MAE], nval = 500, tols =c(0.05), method = "rejection")
 
 plot(cv_zika)
 summary(cv_zika)
