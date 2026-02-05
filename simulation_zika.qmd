@@ -1,5 +1,5 @@
 ---
-title: "Epidemie_Zika"
+title: "Modélisation de l'épidemie de Zika à San Andres en 2015"
 date: "`r Sys.Date()`"
 author: "Capucine Benoit-Grignard, Maite Decencière"
 format:
@@ -17,25 +17,40 @@ format:
 
 # Packages
 ```{r, message = FALSE, warning = FALSE}
-library(outbreaks)
-library(dplyr)
-library(ggplot2)
-library(deSolve)
-library(abc)
-library(ggplot2)
-library(data.table)
-library(readr)
-library(grid)
-library(gridExtra)
-library(ggpubr)
-library(lubridate)
+rm(list = ls())
 
-# install.packages("devtools")
-# Installer BRREWABC depuis GitHub
-library(devtools)
-# install_github("gaelbn/BRREWABC")
+# Installation des packages s'ils ne sont pas installés ------------------------
+requiredPackages <- c("outbreaks", "lubridate", "dplyr", "data.table", "readr", 
+                      "deSolve", "abc", "ggplot2", "grid", "gridExtra",
+                      "ggpubr", "GGally", "devtools")
+for(package in requiredPackages){ 
+  if(!requireNamespace(package, quietly = TRUE))
+    install.packages(package)
+}
+if(!requireNamespace("BRREWABC")){install_github("gaelbn/BRREWABC")}
+
+## Packages dont sont issues les données ---------------------------------------
+library(outbreaks)
+
+## Packages pour la gestion des données ----------------------------------------
+library(lubridate)  # Gestion des dates 
+library(dplyr)      # Gestion des data.frame
+library(data.table) # Gestion des data.frame
+library(readr)      # Lecture fichier .txt / .csv
+
+## Packages pour la simulation / l'inférence / l'ABC ---------------------------
+library(deSolve)    # Resultion d'équations différentielles
+library(abc)        # Méthode d'ABC rejection et cross validation
 library(BRREWABC)
+
+## Packages graphiques ---------------------------------------------------------
+library(ggplot2)   # Graphiques 
+library(grid)      # Rearrange les figures
+library(gridExtra) # Rearrange les figures
+library(ggpubr)    # Rearrange les figures
 library(GGally)
+
+library(devtools)
 ```
 
 # Données
@@ -265,7 +280,7 @@ df_param <- data.frame(
   ## Priors testés : 
   beta = runif(T, min = 0, max = 3), 
   theta = runif(T, min = 0, max = 1), 
-  p = runif(T, min = 0, max = 0.8) 
+  p = runif(T, min = 0.01, max = 0.8) 
 )
 
 for (i in 1:T){
@@ -325,7 +340,7 @@ for (i in 1:T){
     # print(i)
 }
 
-## Ordination des simualtions par valeurs de MAE -------------------------------
+## Ordination des simulations par valeurs de MAE -------------------------------
 df_param = df_param[order(df_param$MAE, decreasing = FALSE),] 
 
 ## Conservation des 500 meilleures simulations ---------------------------------
