@@ -1,6 +1,7 @@
 ---
 title: "Epidemie_Zika"
 date: "`r Sys.Date()`"
+author: "Capucine Benoit-Grignard, Maite Decencière"
 format:
   html:
     toc: true
@@ -15,7 +16,6 @@ format:
 ---
 
 # Packages
-
 ```{r, message = FALSE, warning = FALSE}
 library(outbreaks)
 library(dplyr)
@@ -38,17 +38,17 @@ library(BRREWABC)
 library(GGally)
 ```
 
-# Data
+# Données
+Données d'incidence journalière de l'épidémie de Zika, survenue sur l'ile de San Andres en 2015, issues du package `outbreaks`
 ```{r}
 data <- zika_sanandres_2015
-data$cumule <- cumsum(data$cases)
+data$cumule <- cumsum(data$cases) # incidence cumulée
 data$cases_ajuste <- data$cases
-# data[data]
 ```
 
 ```{r}
 plot(data, pch = 19)
-plot(x= data$date, y=data$cumule)
+plot(x = data$date, y = data$cumule)
 
 ggplot(data, aes(x = date, y = cases))+
   geom_line() + 
@@ -57,7 +57,7 @@ ggplot(data, aes(x = date, y = cases))+
 ```
 
 ## Rajouter les pas de temps manquants (avec des NA)
-Pour avoir la bonne taille de data.frame (par rapport à la simulation)
+Pour avoir la bonne taille de data.frame en terme de nombre de jours (par rapport à la simulation), il est nécessaire de rajouter les jours manquants. L'incidence pour ces jours sera `NA`. 
 ```{r}
 tt_data <- seq(from = min(data$date), to = max(data$date), by = "day")
 tt_data <- data.frame(date = tt_data) %>%
@@ -65,15 +65,16 @@ tt_data <- data.frame(date = tt_data) %>%
   mutate(week = floor(as.numeric(date - min(date))/7))
 ```
 
-## Données en cumulées par semaine depuis le début de suivi
+## Données d'incidence hebdomadaire depuis le début de suivi
 ```{r}
 data_sem <- tt_data %>%
   group_by(week) %>%
-  summarize(cases = sum(cases, na.rm = TRUE)) %>%
-  mutate(cumule = cumsum(cases))
+  summarize(cases = sum(cases, na.rm = TRUE)) %>% #incidence hebdomadaire
+  mutate(cumule = cumsum(cases)) #incidence hebdomadaire cumulée
 ```
 
 ## Données météo 
+Données de température et de pluviométrie horaire sur la zone d'étude entre septembre 2015 et février 2016, issues de la base de données ERA5 
 ```{r}
 meteo <- read.csv("era5.csv")
 data_sem_meteo <- meteo %>%
@@ -108,7 +109,8 @@ data_sem_meteo %>%
 #   left_join(., era5, by = c("date" = "valid_time"))
 ```
 
-# Sans les moustiques avec Asympto E divisé en I et A
+# Modèle SEAIR
+Modèle SEAIR avec cinq compartiments sur une seule population humaine
 ```{r}
 SEIAR <- function(t, state, parameters) {
 
@@ -118,54 +120,54 @@ SEIAR <- function(t, state, parameters) {
     lambda_H <- beta * (I_H + theta * A_H) / N_H
 
     # Humains
-    dS_H <- -lambda_H * S_H
-    dE_H <-  lambda_H * S_H - sigma_H * E_H
-    dI_H <-  p * sigma_H * E_H - gamma_I * I_H
-    dA_H <- (1 - p) * sigma_H * E_H - gamma_A * A_H
-    dR_H <-  gamma_I * I_H + gamma_A * A_H
+    dS_H <- -lambda_H * S_H                         # Individus susceptibles                  
+    dE_H <-  lambda_H * S_H - sigma_H * E_H         # Individus exposés 
+    dI_H <-  p * sigma_H * E_H - gamma_I * I_H      # Individus infectés
+    dA_H <- (1 - p) * sigma_H * E_H - gamma_A * A_H # Individus asymptomatiques
+    dR_H <-  gamma_I * I_H + gamma_A * A_H          # Individus rétablis
 
     list(c(
       dS_H, dE_H, dI_H, dA_H, dR_H
     ))
   })
 }
-
 ```
 
+Paramètres du modèle : 
 ```{r}
 parameters <- c(
   
-  # Taille pop
+  # Taille de population
   N_H = 54500,
 
   # Transmission 
   beta = 0.5, 
 
   # Humains
-  sigma_H = 1/5.7, # 1/ durée incubation
-  gamma_I = 1/4.7, # 1/ duree infection
-  gamma_A = 1/4.7,
+  sigma_H = 1/5.7, # taux d'incubation : 1/ durée incubation
+  gamma_I = 1/4.7, # taux de guérison des symptomatqiues : 1/ duree infection
+  gamma_A = 1/4.7, # taux de guérison des asymptomatqiues : 1/ duree infection
 
-  p     = 0.2,   # proportion symptomatique
-  theta = 0.7    # infectiosité asympto
+  p     = 0.2,   # proportion d'inidvidus symptomatiques dans la population
+  theta = 0.7    # infectiosité relative des asymptomatiques
 )
-```
 
+## Conditions initiales de la simulation  --------------------------------------
 
-```{r}
 init <- c(
-  S_H = as.numeric(parameters["N_H"]) - 1,
-  E_H = 1,
+  S_H = as.numeric(parameters["N_H"]) - 1, # Toute la population est suscpetible (sauf le patient 0)
+  E_H = 1,                                 # 1 seule personne exposée dans la population 
   I_H = 0,
   A_H = 0,
   R_H = 0
 )
 
+## Durée de la simulation ------------------------------------------------------
 times_obs <- seq(0, 146, by = 1) # mettre + long 
 times_sim <- seq(0, 500, by = 1) # mettre + long 
 ```
 
-Test du modèle en changeant les paramètres à la main
+# Inférence du modèle avec des paramètres fixés 
 ```{r}
 out <- ode(
   y = init,
@@ -242,74 +244,75 @@ plot(outA$time, outA$incidence*55000*0.2,
 
 ```
 
-
 # Inférence des paramètres : ABC rejection
 Critère à optimiser : Somme des carrés des écarts (incidence à la fin de l'épidémie + incidence cumulée)
 La SSE pénalise fortement les écarts importants, ce qui la rend sensible aux valeurs aberrantes. Elle est adaptée lorsque les erreurs sont supposées suivre une distribution normale.   
 Si distribution non normale : erreur absolue moyenne (MAE)    
 
-
 Probleme : on simule à partir du 1er infecté / les data commencent au 1er cas détécté. Le modèle a du retard ! (entre : incubation, propagation, asympto...). Si on décale pas, incidence sur le pas de temps plate !
+
+## 10 000 simulations 
 ```{r}
+## Nombre de simulations -------------------------------------------------------
 T = 10000
 
-
+## Construction du dataframe des simulations -----------------------------------
 df_param <- data.frame(
-  # Stat résumées : 
+  ## Statistiques résumées : 
   # dist_cumul = rep(NA, T), 
   #SCE = rep(NA, T),
   MAE = rep(NA, T),
-  # Priors testés : 
+  ## Priors testés : 
   beta = runif(T, min = 0, max = 3), 
   theta = runif(T, min = 0, max = 1), 
-  p = runif(T, min = 0.1, max = 0.8) 
+  p = runif(T, min = 0, max = 0.8) 
 )
 
 for (i in 1:T){
   
-  # Echantillonnage des param --------------------------------------------------
+  # Echantillonnage des paramètres ---------------------------------------------
   parameters <- c(
-  N_H = 54500,
-  beta = df_param[i,]$beta,
-  # beta = 0.5, 
-  sigma_H = 1/5.7, #selon biblio
-  gamma_I = 1/4.7, #selon biblio
-  gamma_A = 1/4.7, #selon biblio
-  p = df_param[i,]$p,
-  # p = 0.2,
-  # theta = 0.7)
-  theta = df_param[i,]$theta)
+    N_H = 54500,               # taille de population
+    beta = df_param[i,]$beta,
+    # beta = 0.5, 
+    sigma_H = 1/5.7,           # selon biblio
+    gamma_I = 1/4.7,           # selon biblio
+    gamma_A = 1/4.7,           # selon biblio
+    p = df_param[i,]$p,
+    # p = 0.2,
+    # theta = 0.7)
+    theta = df_param[i,]$theta)
   
   # Simulation des données -----------------------------------------------------
   out <- ode(
-  y = init,
-  times = times_sim, #sur le temps du modele : + long 
-  func = SEIAR,
-  parms = parameters,
-  method = "rk4")
+    y = init,
+    times = times_sim, #sur le temps du modele : + long 
+    func = SEIAR,
+    parms = parameters,
+    method = "rk4")
   
-  # Cacul incidence ----------------------------------------------------
+  # Calcul incidence -----------------------------------------------------------
   out <- as.data.frame(out)
   out$incidence <- parameters["sigma_H"] * out$E_H * parameters["p"] # durée incubation x nbr d'exposés x proba symptomatique 
   
-  # Remettre les data au même niveau que le modèle : décqlage tempo ---------------------------------------
+  # Remettre les data au même niveau que le modèle : décalage temporel ---------
   # Prendre 1er temps où inicidence obs = 1 (1er cas)
   t_align <- which(out$incidence >= 1)[1] 
+  
   # si t_align = NA : jamais inicidence de 1, on n'enregistre pas la simulation 
   if(!is.na(t_align)){
     out <- out[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
     out <- cbind(out, tt_data) #jointure avec le tableau des données observées 
   
     out_week <- out %>%
-      mutate(week = floor(as.numeric(date - min(date))/7)) %>% #création des semianes 
+      mutate(week = floor(as.numeric(date - min(date))/7)) %>% #création des semaines 
       group_by(week) %>%
-      summarize(cases_obs = sum(cases, na.rm = TRUE), #somme par semaine obs 
+      summarize(cases_obs = sum(cases, na.rm = TRUE),          #somme par semaine obs 
                 cases_sim = sum(incidence, na.rm = TRUE)) %>%
       ungroup() %>%
       arrange(week) %>%
-      mutate(cases_obs_cum = cumsum(cases_obs), # cumul pour chaque semaine 
+      mutate(cases_obs_cum = cumsum(cases_obs),                 # cumul pour chaque semaine 
             cases_sim_cum = cumsum(cases_sim))
-# distance <- MAE_week + 0.1 * penalty_final 
   
   # Calcul de la distance ------------------------------------------------------
     # dist <- out_week %>% 
@@ -317,25 +320,16 @@ for (i in 1:T){
     #             MAE = mean(abs(cases_obs - cases_sim))) # MAE sur l'incidence
       dist <- out_week %>% 
        summarise(MAE = mean(abs(cases_obs_cum - cases_sim_cum))) # MAE sur l'incidence cumulée
-  
-  
-  # Valeur derniere incidence cumulée
-    #last_incidence <- abs(last(out_week$cases_obs_cum) - last(out_week$cases_sim_cum))
-  
-    #df_param[i,]$SCE <- dist$SCE
-    #df_param[i,]$MAE_inci <- dist$MAE + 0.1*last_incidence
     df_param[i,]$MAE <- dist$MAE
   }
-  
-  
     # print(i)
 }
 
-# Distance SCE -----------------------------------------------------------------
-# df_param = df_param[order(df_param$MAE, decreasing = FALSE),] # ranger les erreurs
+## Ordination des simualtions par valeurs de MAE -------------------------------
 df_param = df_param[order(df_param$MAE, decreasing = FALSE),] 
 
-df_subset <- df_param[c(1:500),c("beta","theta", "p")] # garder les x meilleurs
+## Conservation des 500 meilleures simulations ---------------------------------
+df_subset <- df_param[c(1:500),c("beta","theta", "p")]
 ```
 
 ```{r}
@@ -355,16 +349,14 @@ df_param = df_param[order(df_param$MAE, decreasing = FALSE),]
 df_subset <- df_param[c(1:500),c("p", "theta", "beta")]
 ```
 
-
 ```{r}
-ggpairs(df_subset, upper= list(continuous=wrap('cor', size=14))) + 
+ggpairs(df_subset, upper = list(continuous = wrap('cor', size = 14))) +
   theme_bw(base_size = 20) 
 ```
 
-
-Simulation de la meilleure distance : 
+## Simulation du modèle avec la meilleure distance MAE
 ```{r}
-i=1
+i = 1
 
 parameter_closest <- c(
   N_H = 54500,
@@ -394,7 +386,7 @@ Remettre au bon pas temporel et affichage :
 t_align <- which(out_close$incidence >= 1)[1]
 out_close_tempo <- out_close[t_align:(t_align + nrow(tt_data) - 1), ] # prendre 147 jours après le 1er cas détecté par le modèle
 
-# lier avec le dataframe des données
+## Lier avec le dataframe des données observées --------------------------------
 df_out <- cbind(out_close_tempo, tt_data) %>%
   group_by(week) %>% # somme par semaine
   summarize(cases_obs = sum(cases, na.rm = TRUE), 
@@ -402,7 +394,7 @@ df_out <- cbind(out_close_tempo, tt_data) %>%
   mutate(cumule_obs = cumsum(cases_obs), 
          cumule_sim = cumsum(cases_sim))
   
-
+## Comparaison visuelle avec les incidences observées --------------------------
 plot(df_out$week, df_out$cumule_obs,  col = "blue")
 lines(df_out$cumule_sim, col = "red")
 
@@ -412,7 +404,6 @@ lines(df_out$cases_sim, col = "red")
 plot(df_out$cases_sim)
 plot(df_out$cumule_sim)
 ```
-
 
 ```{r}
 ### Garder tt les plots dans 1 même graph 
@@ -425,13 +416,13 @@ df_out_p_theta <- df_out
 Bon ça marche pas top, peut être que l'exploration de l'espace des paramètres est pas top ? ou la distance choisie.ou les summary stat
 
 
-## Cross validation de nos paramètres
+## Cross validation des paramètres
 ```{r}
 setDT(df_param)
 
-cv_zika <- cv4abc(param = df_param[,.(theta, beta, p)], 
-                  sumstat = df_param[,MAE], nval = 500, 
-                  tols =c(0.05), method = "rejection")
+cv_zika <- cv4abc(param = df_param[, .(theta, beta, p)],
+                  sumstat = df_param[, MAE], nval = 500,
+                  tols = c(0.05), method = "rejection")
 
 # cv_zika <- cv4abc(param = df_param[,.(beta,theta)], sumstat = df_param[,MAE], nval = 500, tols =c(0.05), method = "rejection")
 
@@ -441,7 +432,6 @@ summary(cv_zika)
 ```
 Très mauvais pour beta et theta
 
-
 ## ABC rejection
 ```{r}
 Tol = 0.1
@@ -450,7 +440,7 @@ setDT(df_param)
 test_abc_n <- abc(target = c(0), 
                   param = df_param[,.(beta,p)],
                   # param = df_param[,.(beta,theta,p)],
-                   # param = df_param[,.(beta,theta)], 
+                  # param = df_param[,.(beta,theta)], 
                   # sumstat = df_param[,.(dist_cumul, MAE)], 
                   sumstat = df_param[,MAE], 
                   tol = Tol , method = "rejection")
