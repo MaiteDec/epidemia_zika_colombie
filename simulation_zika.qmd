@@ -289,8 +289,10 @@ plot(outA$time_sim, outA$incidence*55000*0.2,
 ```{r}
 simul <- function(T, beta_p, theta_p, p_p){
   ## FONCTION QUI : 
-  # Simule 
-  ## ENTREE
+  # Simule T fois le modèle SEAIR avec des valeurs de paramètres p, beta et theta fixés ou tirés dans une distribution a priori
+  # Calcule une distance MAE entre les incidences simulées et celles observées 
+  # Classe les simulations selon la MAE la plus faible
+  ## ENTREE : 
   # T : Nombre de simulations (souvent 10 000)
   # T valeurs de beta, theta et p (soit issues de distributions a priori, soit des valeurs fixées)
   ## SORTIE : 
@@ -374,7 +376,7 @@ simul <- function(T, beta_p, theta_p, p_p){
 ```{r}
 meilleur_model_simul <- function(df_subset){
   # Fonction qui : 
-  #
+  # Simule le modèle SEAIR avec les valeurs de paramètres p, theta et beta issue du modèle avec la MAE la plus faible
   ## ENTREE : 
   # Dataframe df_subset issu de la fonction simul : la 1ere ligne correspond aux valeurs 
   # de p, theta et beta du modèle avec la plus faible distance MAE
@@ -511,7 +513,7 @@ test_abc_n <- abc(target = c(0),
 
 summary(test_abc_n)
 hist(test_abc_n)
-plot(test_abc_n, param = df_param[,.(beta,theta,p)])
+# plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 ```
 
 ## p fixé à 0.04, theta et beta estimés
@@ -578,7 +580,6 @@ test_abc_n <- abc(target = c(0),
 
 summary(test_abc_n)
 hist(test_abc_n)
-plot(test_abc_n, param = df_param_pfixe[,.(beta,theta)])
 ```
 
 ## theta fixé, p et beta estimés
