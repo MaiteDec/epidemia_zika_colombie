@@ -211,7 +211,7 @@ times_sim <- seq(0, 500, by = 1)
 ```{r}
 out <- ode(
   y = init,
-  times = times,
+  times = times_sim,
   func = SEIAR,
   parms = parameters,
   method = "rk4"
@@ -236,17 +236,17 @@ out <- cbind(out, tt_data)
 ```
 
 ```{r}
-plot(out$time, out$incidence_obs,
+plot(out$times_sim, out$incidence_obs,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
 lines(out$time+40, tt_data$cases)
 
-plot(out$time, out$cumule,
+plot(out$times_sim, out$cumule,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence cumulée")
-lines(out$time, tt_data$cumule)
+lines(out$times_sim, tt_data$cumule)
 ```
 Décalage des dates !!! On a pas le début de l'épidémie
 
@@ -263,7 +263,7 @@ lines(data_sem$week, data_sem$cases)
 ```{r}
 outA <- ode(
   y = init,
-  times = times,
+  times = times_sim,
   func = SEIAR_SEI,
   parms = parameters,
   method = "rk4"
@@ -277,7 +277,7 @@ outA$incidence <- parameters["sigma_H"] * outA$E_H
 ```
 
 ```{r}
-plot(outA$time, outA$incidence*55000*0.2,
+plot(outA$time_sim, outA$incidence*55000*0.2,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
@@ -292,7 +292,7 @@ simul <- function(T, beta_p, theta_p, p_p){
   # Simule 
   ## ENTREE
   # T : Nombre de simulations (souvent 10 000)
-  # 
+  # T valeurs de beta, theta et p (soit issues de distributions a priori, soit des valeurs fixées)
   ## SORTIE : 
   # Tableau df_subset avec des paramètres tirés dans chaque simualtion, avec la 
   # valeur de distance associée (MAE)
@@ -444,7 +444,7 @@ meilleur_model_simul <- function(df_subset){
 Les priors des 3 paramètres sont des distributions uniformes. 
 ```{r}
 ## Nombre de simulations -------------------------------------------------------
-T <- 100
+T <- 10000
 
 ## Priors ----------------------------------------------------------------------
 beta_prior <- runif(T, min = 0, max = 3)
@@ -466,7 +466,7 @@ df_subset <- simu_resul[[2]]
 df_out <- meilleur_model_simul(df_subset)
 ```
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning = FALSE}
 ggpairs(df_subset %>% dplyr::select(-MAE), 
         upper = list(continuous = wrap('cor', size = 14))) +
   theme_bw(base_size = 20) 
@@ -516,7 +516,7 @@ plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 
 ## p fixé à 0.04, theta et beta estimés
 ```{r}
-p_prior <- 0.04
+p_prior <- rep(0.04, T)
 beta_prior <- runif(T, min = 0, max = 3)
 theta_prior <- runif(T, min = 0, max = 1) 
 
@@ -583,7 +583,7 @@ plot(test_abc_n, param = df_param_pfixe[,.(beta,theta)])
 
 ## theta fixé, p et beta estimés
 ```{r}
-theta_prior <- 0.7
+theta_prior <- rep(0.7, T)
 beta_prior <- runif(T, min = 0, max = 3)
 p_prior <- runif(T, min = 0.01, max = 0.8)
 
@@ -650,7 +650,7 @@ plot(test_abc_n, param = df_param_pfixe[,.(beta,p)])
 
 ## beta fixé, p et theta estimés 
 ```{r}
-beta_prior <- 0.5
+beta_prior <- rep(0.5, T)
 p_prior <- runif(T, min = 0.01, max = 0.8)
 theta_prior <- runif(T, min = 0, max = 1) 
 
@@ -758,5 +758,10 @@ b <- tout %>%
   ylim(c(0, 1500))
 
 ggarrange(a, b)
+```
+
+# Calcul de R0
+```{r}
+
 ```
 
