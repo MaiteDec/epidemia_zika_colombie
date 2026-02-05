@@ -51,6 +51,8 @@ library(ggpubr)    # Rearrange les figures
 library(GGally)
 
 library(devtools)
+
+set.seed(23)
 ```
 
 # Données 
