@@ -466,7 +466,7 @@ df_subset <- simu_resul[[2]]
 df_out <- meilleur_model_simul(df_subset)
 ```
 
-```{r}
+```{r, message=FALSE}
 ggpairs(df_subset %>% dplyr::select(-MAE), 
         upper = list(continuous = wrap('cor', size = 14))) +
   theme_bw(base_size = 20) 
@@ -517,8 +517,8 @@ plot(test_abc_n, param = df_param[,.(beta,theta,p)])
 ## p fixé à 0.04, theta et beta estimés
 ```{r}
 p_prior <- 0.04
-theta_prior <- 0.7
-beta_prior <- 0.5
+beta_prior <- runif(T, min = 0, max = 3)
+theta_prior <- runif(T, min = 0, max = 1) 
 
 ## 10000 simulations du modèle pour différentes valeurs de paramètres ----------
 simu_resul <- simul(T,
@@ -581,18 +581,146 @@ hist(test_abc_n)
 plot(test_abc_n, param = df_param_pfixe[,.(beta,theta)])
 ```
 
-## Comparaison des dynamiques avec différents paramètres fixés ou estimés 
+## theta fixé, p et beta estimés
 ```{r}
-### Garder tt les plots dans 1 même graph 
-# df_out_p_beta_theta <- df_out
-# df_out_p_beta <- df_out
-df_out_p_theta <- df_out
-# df_out_beta_theta <- df_out
+theta_prior <- 0.7
+beta_prior <- runif(T, min = 0, max = 3)
+p_prior <- runif(T, min = 0.01, max = 0.8)
+
+## 10000 simulations du modèle pour différentes valeurs de paramètres ----------
+simu_resul <- simul(T,
+                    beta_p = beta_prior, 
+                    theta_p = theta_prior,
+                    p_p = p_prior)
+
+df_param_thetafixe <- simu_resul[[1]]
+df_subset_thetafixe <- simu_resul[[2]]
+# write.table(df_subset_thetafixe, "simul_beta_p.csv", sep="t",dec=",", na=" ")
+
+## Simulation de l'incidence avec le meilleur modèle ---------------------------
+df_out_thetafixe <- meilleur_model_simul(df_subset_thetafixe)
 ```
 
 ```{r}
+ggpairs(df_subset_thetafixe %>% dplyr::select(-MAE),
+        upper = list(continuous = wrap('cor', size = 14))) +
+  theme_bw(base_size = 20) 
+```
+
+Comparaison visuelle avec les incidences observées
+```{r}
+plot(df_out_thetafixe$week, df_out_thetafixe$cumule_obs,  col = "blue")
+lines(df_out_thetafixe$cumule_sim, col = "red")
+
+plot(df_out_thetafixe$week, df_out_thetafixe$cases_obs,  col = "blue")
+lines(df_out_thetafixe$cases_sim, col = "red")
+
+plot(df_out_thetafixe$cases_sim)
+plot(df_out_thetafixe$cumule_sim)
+```
+
+### Cross validation des paramètres
+```{r}
+setDT(df_param_thetafixe)
+
+cv_zika <- cv4abc(param = df_param_thetafixe[, .(p, beta)],
+                  sumstat = df_param_thetafixe[, MAE], nval = 500,
+                  tols = c(0.05), method = "rejection")
+
+plot(cv_zika)
+summary(cv_zika)
+```
+Très mauvais pour beta et theta
+
+### ABC rejection
+```{r}
+## Seuil de tolérance : 
+Tol = 0.1
+setDT(df_param_pfixe) # passage en data.table
+
+test_abc_n <- abc(target = c(0), 
+                  param = df_param_thetafixe[,.(beta, p)],
+                  sumstat = df_param_thetafixe[,MAE], 
+                  tol = Tol , method = "rejection")
+
+summary(test_abc_n)
+hist(test_abc_n)
+plot(test_abc_n, param = df_param_pfixe[,.(beta,p)])
+```
+
+## beta fixé, p et theta estimés 
+```{r}
+beta_prior <- 0.5
+p_prior <- runif(T, min = 0.01, max = 0.8)
+theta_prior <- runif(T, min = 0, max = 1) 
+
+## 10000 simulations du modèle pour différentes valeurs de paramètres ----------
+simu_resul <- simul(T,
+                    beta_p = beta_prior, 
+                    theta_p = theta_prior,
+                    p_p = p_prior)
+
+df_param_betafixe <- simu_resul[[1]]
+df_subset_betafixe <- simu_resul[[2]]
+# write.table(df_param_betafixe, "simul_p_theta.csv", sep="t",dec=",", na=" ")
+
+## Simulation de l'incidence avec le meilleur modèle ---------------------------
+df_out_betafixe <- meilleur_model_simul(df_subset_betafixe)
+```
+
+```{r}
+ggpairs(df_subset_betafixe %>% dplyr::select(-MAE),
+        upper = list(continuous = wrap('cor', size = 14))) +
+  theme_bw(base_size = 20) 
+```
+
+Comparaison visuelle avec les incidences observées
+```{r}
+plot(df_out_betafixe$week, df_out_betafixe$cumule_obs,  col = "blue")
+lines(df_out_betafixe$cumule_sim, col = "red")
+
+plot(df_out_betafixe$week, df_out_pfixe$cases_obs,  col = "blue")
+lines(df_out_betafixe$cases_sim, col = "red")
+
+plot(df_out_betafixe$cases_sim)
+plot(df_out_betafixe$cumule_sim)
+```
+
+### Cross validation des paramètres
+```{r}
+setDT(df_param_betafixe)
+
+cv_zika <- cv4abc(param = df_param_betafixe[, .(theta, p)],
+                  sumstat = df_param_betafixe[, MAE], nval = 500,
+                  tols = c(0.05), method = "rejection")
+
+plot(cv_zika)
+summary(cv_zika)
+```
+Très mauvais pour beta et theta
+
+### ABC rejection
+```{r}
+## Seuil de tolérance : 
+Tol = 0.1
+setDT(df_param_betafixe) # passage en data.table
+
+test_abc_n <- abc(target = c(0), 
+                  param = df_param_betafixe[,.(p, theta)],
+                  sumstat = df_param_betafixe[,MAE], 
+                  tol = Tol , method = "rejection")
+
+summary(test_abc_n)
+hist(test_abc_n)
+plot(test_abc_n, param = df_param_betafixe[,.(p,theta)])
+```
+
+## Comparaison des dynamiques avec différents paramètres fixés ou estimés 
+```{r}
 tout <- rbind(df_out %>% mutate(simu = "p_beta_theta"), 
-              df_out_pfixe %>% mutate(simu = "theta_beta"))
+              df_out_pfixe %>% mutate(simu = "theta_beta"), 
+              df_out_betafixe %>% mutate(simu = "theta_p"),
+              df_out_thetafixe %>% mutate(simu = "p_beta"))
 # write.csv(tout, "tout.csv")
 
 a <- tout %>% 
