@@ -52,7 +52,8 @@ library(GGally)
 
 library(devtools)
 
-set.seed(23)
+## Reproductibilité des données ------------------------------------------------
+set.seed(23) 
 ```
 
 # Données 
@@ -567,7 +568,7 @@ cv_zika <- cv4abc(param = df_param_pfixe[, .(theta, beta)],
 plot(cv_zika)
 summary(cv_zika)
 ```
-Très mauvais pour beta et theta
+Moins mauvais pour beta et theta, mais toujours mauvais
 
 ### ABC rejection
 ```{r}
@@ -721,9 +722,9 @@ plot(test_abc_n, param = df_param_betafixe[,.(p,theta)])
 ## Comparaison des dynamiques avec différents paramètres fixés ou estimés 
 ```{r}
 tout <- rbind(df_out %>% mutate(simu = "p_beta_theta"), 
-              df_out_pfixe %>% mutate(simu = "theta_beta"), 
-              df_out_betafixe %>% mutate(simu = "theta_p"),
-              df_out_thetafixe %>% mutate(simu = "p_beta"))
+              df_out_pfixe %>% mutate(simu = "theta_beta")) #, 
+              # df_out_betafixe %>% mutate(simu = "theta_p"),
+              # df_out_thetafixe %>% mutate(simu = "p_beta"))
 # write.csv(tout, "tout.csv")
 
 a <- tout %>% 
@@ -763,8 +764,83 @@ b <- tout %>%
 ggarrange(a, b)
 ```
 
-# Calcul de R0
-```{r}
+# Calcul de R0 à partir de la Matrice de Prochaine Generation
+Ici, le R0 correspond à la somme des contributions à la transmission des individus symptomatiques I et asymptomatiques A dans une population entièrement susceptible.    
+**La matrice F de nouvelles infections :**   
+$$ F = \begin{bmatrix}
+\beta \frac{I+\theta A}{N} S \\
+0 \\
+0 \\
+\end{bmatrix}
+$$
 
+**La matrice V des transitions hors des compratiments infectieux :**   
+$$ V = \begin{bmatrix}
+\delta E \\
+p \delta E - \gamma_I I \\
+(1-p) \delta E - \gamma_A A
+\end{bmatrix}
+$$
+$$F = [\frac{\delta F_i}{\delta x_j}] = \begin{bmatrix}
+0 & \beta \frac{S}{N} & \beta \theta \frac{S}{N} \\
+0 & 0 & 0 \\
+0 & 0 & 0 \\
+\end{bmatrix}
+$$
+$$V = [\frac{\delta V_i}{\delta x_j}] = \begin{bmatrix}
+\delta & 0 & 0 \\
+p \delta & -\gamma_I & 0 \\
+(1-p)\delta & 0 & -\gamma_A \\
+\end{bmatrix}
+$$
+
+**Linéarisation au point d'équilibre (S*, E*, I*, A*, R*) = (N, 0, 0, 0, 0):**  
+$$F_{DFE} = \begin{bmatrix}
+0 & \beta & \beta \theta \\
+0 & 0 & 0 \\
+0 & 0 & 0
+\end{bmatrix}
+$$
+$$V_{DFE} = \begin{bmatrix}
+\delta & 0 & 0 \\
+p \delta & -\gamma_I & 0 \\
+(1-p)\delta & 0 & -\gamma_A \\
+\end{bmatrix}
+$$
+
+**Matrice de prochaine génération :**   
+$$
+K = FV^{-1} = \begin{bmatrix}
+0 & \beta & \beta \theta \\
+0 & 0 & 0 \\
+0 & 0 & 0
+\end{bmatrix} 
+\begin{bmatrix}
+\frac{1}{\delta} & 0 & 0 \\
+\frac{p}{\gamma_I} & -\frac{1}{\gamma_I} & 0 \\
+\frac{1-p}{\gamma_A} & 0 & -\frac{1}{\gamma_A} \\
+\end{bmatrix} = 
+\begin{bmatrix}
+\beta(\frac{p}{\gamma_I}+\frac{(1-p)\theta}{\gamma_A} & -\frac{\beta}{\gamma_I} & -\frac{\beta\theta}{\gamma_A} \\
+0&0&0\\
+0&0&0
+\end{bmatrix}
+$$
+
+**R0 : ** 
+$$R_0 = \rho(K) =  \beta(\frac{p}{\gamma_I}+\frac{(1-p)\theta}{\gamma_A})$$
+
+```{r}
+calcul_R0 <- function(beta, p, gamma_I, theta, gamma_A){
+  ## Fonction qui calcule la valeur de R0 à partir de valeurs de paramètres 
+  ## ENTREE : valeurs des paramètres 
+  ## SORTIE : valeur de R0
+  R0 <- beta * ((p/gamma_I) + ((1-p) * theta) / gamma_A)
+    return(R0)
+}
+```
+
+```{r}
+R0 <- calcul_R0(beta, p, gamma_I, theta, gamma_A)
 ```
 
