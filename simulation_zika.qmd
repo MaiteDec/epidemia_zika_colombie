@@ -22,12 +22,11 @@ rm(list = ls())
 # Installation des packages s'ils ne sont pas installés ------------------------
 requiredPackages <- c("outbreaks", "lubridate", "dplyr", "data.table", "readr", 
                       "deSolve", "abc", "ggplot2", "grid", "gridExtra",
-                      "ggpubr", "GGally", "devtools", "tidyr")
+                      "ggpubr", "GGally",  "tidyr")
 for(package in requiredPackages){ 
   if(!requireNamespace(package, quietly = TRUE))
     install.packages(package)
 }
-if(!requireNamespace("BRREWABC")){install_github("gaelbn/BRREWABC")}
 
 ## Packages dont sont issues les données ---------------------------------------
 library(outbreaks)
@@ -42,7 +41,6 @@ library(readr)      # Lecture fichier .txt / .csv
 ## Packages pour la simulation / l'inférence / l'ABC ---------------------------
 library(deSolve)    # Resultion d'équations différentielles
 library(abc)        # Méthode d'ABC rejection et cross validation
-library(BRREWABC)
 
 ## Packages graphiques ---------------------------------------------------------
 library(ggplot2)   # Graphiques 
@@ -226,7 +224,7 @@ out <- as.data.frame(out)
 
 Incidence :   
 Nombre de nouvelles infections par intervalle de temps    
-$Incidence = \sigma * E$ (nbr indiv qui passent de E à I par jour)
+$Incidence = \sigma * E * p$  (nbr indiv qui passent de E à I par jour)
 ```{r}
 # Incidence en nbr indiv/jours
 out$incidence <- parameters["sigma_H"] * out$E_H
@@ -252,7 +250,7 @@ plot(out$times_sim, out$cumule,
      ylab = "Incidence cumulée")
 lines(out$times_sim, tt_data$cumule)
 ```
-Décalage des dates !!! On a pas le début de l'épidémie
+Décalage des dates ! On a pas le début de l'épidémie
 
 ```{r}
 indic_week <- tapply(out$incidence_obs, floor(out$time/7), sum)
@@ -277,11 +275,11 @@ outA <- as.data.frame(outA)
 ```
 
 ```{r}
-outA$incidence <- parameters["sigma_H"] * outA$E_H
+outA$incidence <- parameters["sigma_H"] * outA$E_H * parameters["p"]
 ```
 
 ```{r}
-plot(outA$time_sim, outA$incidence*55000*0.2,
+plot(outA$time_sim, outA$incidence*54500,
      type = "l", lwd = 2,
      xlab = "Temps (jours)",
      ylab = "Incidence journalière")
@@ -433,7 +431,7 @@ meilleur_model_simul <- function(df_subset){
 }
 
 ```
-
+Enregistrement des résultats
 ```{r}
 # write.table(df_param, "simul_beta_theta.csv", sep="t",dec=",", na=" ")
 # write.table(df_param, "simul_p_theta.csv", sep="t",dec=",", na=" ")
@@ -492,7 +490,7 @@ plot(df_out$cumule_sim)
 
 ### Cross validation des paramètres
 ```{r}
-setDT(df_param)
+setDT(df_param) # passage en data.table
 
 cv_zika <- cv4abc(param = df_param[, .(theta, beta, p)],
                   sumstat = df_param[, MAE], nval = 500,
@@ -510,14 +508,14 @@ Tol = 0.1
 setDT(df_param) # passage en data.table
 
 ## ABC rejection ---------------------------------------------------------------
-test_abc_n <- abc(target = c(0), 
+abc_n <- abc(target = c(0), 
                   param = df_param[,.(beta, p, theta)],
                   sumstat = df_param[,MAE], 
                   tol = Tol , method = "rejection")
 
-summary(test_abc_n)
-hist(test_abc_n)
-# plot(test_abc_n, param = df_param[,.(beta,theta,p)])
+summary(abc_n)
+hist(abc_n)
+# plot(abc_n, param = df_param[,.(beta,theta,p)])
 ```
 
 ## p fixé à 0.04, theta et beta estimés
@@ -636,7 +634,7 @@ cv_zika <- cv4abc(param = df_param_thetafixe[, .(p, beta)],
 plot(cv_zika)
 summary(cv_zika)
 ```
-Très mauvais pour beta et theta
+
 
 ### ABC rejection
 ```{r}
@@ -703,7 +701,7 @@ cv_zika <- cv4abc(param = df_param_betafixe[, .(theta, p)],
 plot(cv_zika)
 summary(cv_zika)
 ```
-Très mauvais pour beta et theta
+
 
 ### ABC rejection
 ```{r}
@@ -776,7 +774,7 @@ $$ F = \begin{bmatrix}
 \end{bmatrix}
 $$
 
-**La matrice V des transitions hors des compratiments infectieux :**   
+**La matrice V des transitions hors des compartiments infectieux :**   
 $$ V = \begin{bmatrix}
 \delta E \\
 p \delta E - \gamma_I I \\
