@@ -25,12 +25,10 @@ Les analyses ont été réalisées avec les versions suivantes :
 # Packages pour la simulation / l'inférence / l'ABC 
 `deSolve`: Resoltion d'équations différentielles
 - `abc`: Méthode d'ABC rejection et cross validation
-`BRREWABC`:
 # Packages graphiques :
 - `ggplot2`: Visualisation des résultats 
 - `grid`, `gridExtra`, `ggpubr`: Rearrange les figures
-- `GGally`:
-- `devtools`:
+- `GGally`: voir courbes posterior
 Toutes les bibliothèques nécessaires sont directement téléchargées au début du code si non installées 
 
 ## 1 seul script R : simulation_zika.qmd ##
@@ -45,7 +43,7 @@ Les principaux paramètres contrôlant les analyses sont :
 # Paramètres ABC : 
 - T : nombre de simulations (ici : 10 000)
 - Tol : seuil de tolérance de l'ABC (ici : 0.05)
-- method : méthode ABC (ici "rejection)
+- method : méthode ABC (ici "rejection")
 # Paramètres de validation croisée :
 - nval : nombre de jeux de validation (ici : 500)
 Ces paramètres peuvent être modifiés dans le script simulation_zika.qmd
