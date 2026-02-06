@@ -22,7 +22,7 @@ rm(list = ls())
 # Installation des packages s'ils ne sont pas installés ------------------------
 requiredPackages <- c("outbreaks", "lubridate", "dplyr", "data.table", "readr", 
                       "deSolve", "abc", "ggplot2", "grid", "gridExtra",
-                      "ggpubr", "GGally", "devtools")
+                      "ggpubr", "GGally", "devtools", "tidyr")
 for(package in requiredPackages){ 
   if(!requireNamespace(package, quietly = TRUE))
     install.packages(package)
@@ -35,6 +35,7 @@ library(outbreaks)
 ## Packages pour la gestion des données ----------------------------------------
 library(lubridate)  # Gestion des dates 
 library(dplyr)      # Gestion des data.frame
+library(tidyr)      # Gestion des data.frame
 library(data.table) # Gestion des data.frame
 library(readr)      # Lecture fichier .txt / .csv
 
@@ -576,13 +577,14 @@ Moins mauvais pour beta et theta, mais toujours mauvais
 Tol = 0.1
 setDT(df_param_pfixe) # passage en data.table
 
-test_abc_n <- abc(target = c(0), 
+test_abc_pfixe <- abc(target = c(0), 
                   param = df_param_pfixe[,.(beta, theta)],
                   sumstat = df_param_pfixe[,MAE], 
                   tol = Tol , method = "rejection")
 
-summary(test_abc_n)
-hist(test_abc_n)
+summary_abc_pfixe <- summary(test_abc_pfixe)
+summary_abc_pfixe
+hist(test_abc_pfixe)
 ```
 
 ## theta fixé, p et beta estimés
@@ -840,7 +842,24 @@ calcul_R0 <- function(beta, p, gamma_I, theta, gamma_A){
 }
 ```
 
+Calcul avec les modes des valeurs estimées par ABC : 
 ```{r}
-R0 <- calcul_R0(beta, p, gamma_I, theta, gamma_A)
+R0 <- calcul_R0(beta = 0.542, p = 0.04, gamma_I = 1/4.7, theta = 0.14, gamma_A = 1/4.7)
+```
+
+Calcul avec les valeurs de l'ABC 
+```{r}
+p = 0.04
+gamma_I = 1/4.7
+gamma_A = 1/4.7
+
+summary_abc_pfixe <- data.frame(summary_abc_pfixe) %>%
+  pivot_wider(names_from = "Var2", values_from = "Freq") %>%
+  rowwise() %>%
+  mutate(R0 = calcul_R0(beta = beta, #valeur de beta estimée
+                        p = p, #valeur de p fixée
+                        gamma_I = gamma_I, #valeur de gamma fixée
+                        theta = theta, #valeur de theta estimée
+                        gamma_A = gamma_A)) #valeur de gamme fixée
 ```
 
